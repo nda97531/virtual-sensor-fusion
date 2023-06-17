@@ -206,7 +206,7 @@ class UPFall(QuickProcess):
             # select one person as the main subject
             main_skeleton = self.select_main_skeleton(skeletons)
 
-            # remove conf columns
+            # remove conf column
             main_skeleton = main_skeleton[:, :2]
 
             skel_frames.append(main_skeleton.reshape(-1))
@@ -221,11 +221,10 @@ class UPFall(QuickProcess):
         skel_frames = skel_frames.interpolate()
         skel_frames = skel_frames.fillna(method='backfill')
 
+        # normalise skeleton session
         norm_joints = skel_frames.iloc[:, -len(norm_joint_cols):].to_numpy()
         skel_frames = skel_frames.iloc[:, :-len(norm_joint_cols)]
         skel_frames = pl.from_pandas(skel_frames)
-
-        # normalise skeleton session
         # mid hip is always at origin (0, 0)
         norm_start_point = norm_joints[:, 2:]
         # torso length is always 1 (choose torso because it doesn't depend on subject posture)
@@ -292,6 +291,8 @@ class UPFall(QuickProcess):
         skeletons = skeletons[~skeletons_in_corner]
 
         # the rest: return max conf
+        if len(skeletons) == 0:
+            return np.concatenate([np.full([25, 2], fill_value=np.nan), np.zeros([25, 1])], axis=-1)
         mean_conf = skeletons[:, :, 2].mean()
         most_conf_skeleton = skeletons[np.argmax(mean_conf)]
         return most_conf_skeleton
