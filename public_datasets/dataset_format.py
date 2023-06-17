@@ -1,5 +1,6 @@
+import itertools
 import os
-from typing import Tuple
+from typing import Tuple, Any, List, Union
 import numpy as np
 from glob import glob
 import pandas as pd
@@ -10,6 +11,7 @@ from loguru import logger
 
 from public_datasets.constant import G_TO_MS2, DEG_TO_RAD
 from utils.pl_dataframe import resample_numeric_df as pl_resample_numeric_df
+from utils.time import str_2_timestamp
 
 
 class QuickProcess:
@@ -112,23 +114,24 @@ class UPFall(QuickProcess):
         'wrist_gyro_x(rad/s)', 'wrist_gyro_y(rad/s)', 'wrist_gyro_z(rad/s)'
     ]
 
-    SKELETON_COLS = np.concatenate([
-        [f'x_{joint}', f'y_{joint}'] for joint in [
-            "Nose", "Neck", "RShoulder", "RElbow", "RWrist", "LShoulder", "LElbow", "LWrist", "MidHip", "RHip", "RKnee",
-            "RAnkle", "LHip", "LKnee", "LAnkle", "REye", "LEye", "REar", "LEar", "LBigToe", "LSmallToe", "LHeel",
-            "RBigToe", "RSmallToe", "RHeel"]
-    ]).tolist()
-    SELECTED_SKELETON_COLS = np.concatenate([
-        [f'x_{joint}', f'y_{joint}'] for joint in [
-            "Nose", "RShoulder", "LShoulder", "RElbow", "LElbow", "RWrist", "LWrist", "RHip", "LHip", "RKnee", "LKnee",
-            "RAnkle", "LAnkle"]
-    ]).tolist()
+    SKELETON_COLS = list(itertools.chain.from_iterable(
+        [f'x_{joint}', f'y_{joint}'] for joint in
+        ["Nose", "Neck", "RShoulder", "RElbow", "RWrist", "LShoulder", "LElbow", "LWrist", "MidHip", "RHip", "RKnee",
+         "RAnkle", "LHip", "LKnee", "LAnkle", "REye", "LEye", "REar", "LEar", "LBigToe", "LSmallToe", "LHeel",
+         "RBigToe", "RSmallToe", "RHeel"]
+    ))
+    SELECTED_SKELETON_COLS = ['timestamp(ms)'] + list(itertools.chain.from_iterable(
+        [f'x_{joint}', f'y_{joint}'] for joint in
+        ["Nose", "RShoulder", "LShoulder", "RElbow", "LElbow", "RWrist", "LWrist", "RHip", "LHip", "RKnee", "LKnee",
+         "RAnkle", "LAnkle"]
+    ))
+
     # columns used for skeleton normalisation
     SKELETON_NECK_COLS = ["x_Neck", "y_Neck"]
     SKELETON_HIP_COLS = ["x_MidHip", "y_MidHip"]
 
-    TIME_STR_PATTERN = '%Y-%m-%dT%H:%M:%S.%f'
-    POLARS_TIME_STR_PATTERN = '%Y-%m-%dT%H:%M:%S%.f'
+    SKELETON_PANDAS_TIME_FORMAT = '%Y-%m-%dT%H_%M_%S.%f'
+    INERTIA_POLARS_TIME_FORMAT = '%Y-%m-%dT%H:%M:%S%.f'
     INERTIAL_POLARS_DTYPES = [pl.Utf8] + [pl.Float64] * 35 + [pl.Int64] * 11
 
     # minimum confidence threshold to take a skeleton joint
@@ -157,10 +160,11 @@ class UPFall(QuickProcess):
         """
         data_df = pl.read_csv(file_path, has_header=False, new_columns=self.INERTIAL_COLS, skip_rows=2,
                               dtypes=self.INERTIAL_POLARS_DTYPES)
+        logger.info(f'Raw inertia dataframe: {data_df.shape}')
 
         # convert timestamp to millisecond integer
         data_df = data_df.with_columns(
-            pl.col('timestamp(ms)').str.to_datetime(self.POLARS_TIME_STR_PATTERN).dt.timestamp(time_unit='ms')
+            pl.col('timestamp(ms)').str.to_datetime(self.INERTIA_POLARS_TIME_FORMAT).dt.timestamp(time_unit='ms')
         )
 
         # convert units to SI
@@ -174,7 +178,7 @@ class UPFall(QuickProcess):
 
         return data_df, label_df
 
-    def read_skeleton(self, folder_path: str) -> pl.DataFrame:
+    def read_skeleton(self, folder_path: str) -> Union[pl.DataFrame, None]:
         """
         Read skeleton data of only the main subject (person) from all frames in a session
 
@@ -190,6 +194,7 @@ class UPFall(QuickProcess):
         if not json_files:
             return None
         skel_frames = []
+        timestamps = []
 
         # for each frame in this session
         for json_file in json_files:
@@ -197,8 +202,8 @@ class UPFall(QuickProcess):
             with open(json_file, 'r') as F:
                 skeletons = orjson.loads(F.read())
             skeletons = skeletons['people']
-
             skeletons = np.array([np.array(skeleton['pose_keypoints_2d']).reshape(-1, 3) for skeleton in skeletons])
+
             # remove joints with low conf
             low_conf_idx = skeletons[:, :, 2] < self.MIN_JOINT_CONF
             skeletons[low_conf_idx, :2] = np.nan
@@ -210,10 +215,15 @@ class UPFall(QuickProcess):
             main_skeleton = main_skeleton[:, :2]
 
             skel_frames.append(main_skeleton.reshape(-1))
+            timestamps.append(json_file.split(os.sep)[-1].removesuffix('_keypoints.json'))
 
-        # only keep representative joints
+        # create DF
         skel_frames = pd.DataFrame(skel_frames, columns=self.SKELETON_COLS)
-        # but also include 2 joints for normalisation
+        # add timestamp column
+        skel_frames['timestamp(ms)'] = [str_2_timestamp(str_time, str_format=self.SKELETON_PANDAS_TIME_FORMAT, tz=0)
+                                        for str_time in timestamps]
+
+        # only keep representative joints, but also include 2 joints for normalisation
         norm_joint_cols = self.SKELETON_NECK_COLS + self.SKELETON_HIP_COLS
         skel_frames = skel_frames[self.SELECTED_SKELETON_COLS + norm_joint_cols]
 
@@ -221,15 +231,14 @@ class UPFall(QuickProcess):
         skel_frames = skel_frames.interpolate()
         skel_frames = skel_frames.fillna(method='backfill')
 
-        # normalise skeleton session
+        # get mid hip and neck joints to normalise skeleton session
         norm_joints = skel_frames.iloc[:, -len(norm_joint_cols):].to_numpy()
-        skel_frames = skel_frames.iloc[:, :-len(norm_joint_cols)]
-        skel_frames = pl.from_pandas(skel_frames)
+        skel_frames = pl.from_pandas(skel_frames.iloc[:, :-len(norm_joint_cols)])
         # mid hip is always at origin (0, 0)
         norm_start_point = norm_joints[:, 2:]
         # torso length is always 1 (choose torso because it doesn't depend on subject posture)
         torso_length = np.sqrt(np.sum((norm_joints[:, :2] - norm_joints[:, 2:]) ** 2, axis=1)) + 1e-3
-
+        # normalise skeleton session
         x_cols = [c for c in skel_frames.columns if c.startswith('x_')]
         y_cols = [c for c in skel_frames.columns if c.startswith('y_')]
         skel_frames = skel_frames.with_columns(
@@ -247,7 +256,7 @@ class UPFall(QuickProcess):
             skeletons: 3d array shape [num skeleton, num joint, 3(x, y, conf)]
 
         Returns:
-            1d array shape [num skeleton] containing boolean values, True if skeletons is in the corner
+            1d array shape [num skeleton] containing boolean values, True if a skeleton is in the corner
         """
         relative_positions = self.upper_left_corner_line_equation(skeletons[:, :, 0], skeletons[:, :, 1])
         skeleton_in_corner = (relative_positions <= 0) | np.isnan(relative_positions)
@@ -291,8 +300,11 @@ class UPFall(QuickProcess):
         skeletons = skeletons[~skeletons_in_corner]
 
         # the rest: return max conf
+        if len(skeletons) == 1:
+            return skeletons[0]
         if len(skeletons) == 0:
             return np.concatenate([np.full([25, 2], fill_value=np.nan), np.zeros([25, 1])], axis=-1)
+
         mean_conf = skeletons[:, :, 2].mean()
         most_conf_skeleton = skeletons[np.argmax(mean_conf)]
         return most_conf_skeleton
@@ -312,7 +324,8 @@ class UPFall(QuickProcess):
         info = tuple(int(info.group(i)) for i in range(1, 4))
         return info
 
-    def process_session(self, session_folder: str, session_info: str = None) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    def process_session(self, session_folder: str, session_info: str = None) \
+            -> Union[Tuple[pd.DataFrame, pd.DataFrame], None]:
         """
         Produce a fully processed dataframe for each modal in a session
 
@@ -332,9 +345,6 @@ class UPFall(QuickProcess):
         if skeleton_df is None:
             return None
         inertial_df, label_df = self.read_inertial_and_label(f'{session_folder}/{session_info}.csv')
-
-        # timestamps in UP-Fall are synchronised, so we can assign it directly between sensors
-        skeleton_df = skeleton_df.with_columns(inertial_df.select('timestamp(ms)'))
 
         # re-sample
         inertial_df = pl_resample_numeric_df(inertial_df, 'timestamp(ms)', self.inertial_freq)
