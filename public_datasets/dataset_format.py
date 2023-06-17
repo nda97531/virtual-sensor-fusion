@@ -14,8 +14,7 @@ from utils.pl_dataframe import resample_numeric_df as pl_resample_numeric_df
 
 class QuickProcess:
     def __init__(self, raw_folder: str, destination_folder: str,
-                 inertial_freq: float = 50., skeletal_freq: float = 20.,
-                 window_size_sec: float = 4):
+                 inertial_freq: float = 50., skeletal_freq: float = 20.):
         """
         This class transforms public datasets into the same format for ease of use.
 
@@ -24,17 +23,28 @@ class QuickProcess:
             destination_folder: folder to save output
             inertial_freq: (Hz) resample inertial data to this frequency by linear interpolation
             skeletal_freq: (Hz) resample skeletal data to this frequency by linear interpolation
-            window_size_sec: window size in second
         """
         self.raw_folder = raw_folder
         self.destination_folder = destination_folder
-        # pattern for output npy file name
-        self.output_name_pattern = f'{destination_folder}/{{modal}}/subject_{{subject}}/{{session}}.parquet'
 
-        self.window_size_sec = window_size_sec
         # convert Hz to sample/msec
         self.inertial_freq = inertial_freq / 1000
         self.skeletal_freq = skeletal_freq / 1000
+
+    def get_output_file_path(self, modal, subject, session) -> str:
+        """
+        Get path to an output file (.parquet)
+
+        Args:
+            modal: modality
+            subject: subject ID
+            session: session ID
+
+        Returns:
+            path to parquet file
+        """
+        p = f'{self.destination_folder}/{modal}/subject_{subject}/{session}.parquet'
+        return p
 
     def write_output_parquet(self, data: pl.DataFrame, modal: str, subject: any, session: any) -> None:
         """
@@ -46,7 +56,7 @@ class QuickProcess:
             subject: subject name/ID
             session: session ID
         """
-        output_path = self.output_name_pattern.format(modal=modal, subject=subject, session=session)
+        output_path = self.get_output_file_path(modal=modal, subject=subject, session=session)
         os.makedirs(os.path.split(output_path)[0], exist_ok=True)
         data.write_parquet(output_path)
         logger.info(f'Parquet written: {output_path}')
@@ -283,7 +293,8 @@ class UPFall(QuickProcess):
 
         # the rest: return max conf
         mean_conf = skeletons[:, :, 2].mean()
-        return skeletons[np.argmax(mean_conf)]
+        most_conf_skeleton = skeletons[np.argmax(mean_conf)]
+        return most_conf_skeleton
 
     @staticmethod
     def get_info_from_session_folder(path: str) -> tuple:
@@ -341,32 +352,44 @@ class UPFall(QuickProcess):
         return inertial_df, skeleton_df
 
     def run(self):
+        logger.info('Scanning for session folders...')
         session_folders = sorted(glob(f'{self.raw_folder}/Subject*/Activity*/Trial*'))
+        logger.info(f'Found {len(session_folders)} sessions in total')
 
+        skip_session = 0
+        write_session = 0
         # for each session
         for session_folder in session_folders:
             # get session info
             subject, activity, trial = self.get_info_from_session_folder(session_folder)
             session_info = f'Subject{subject}Activity{activity}Trial{trial}'
-            logger.info(f'Start processing session {session_info}')
+            logger.info(f'Starting session {session_info}')
+
+            if os.path.isfile(self.get_output_file_path('inertia', subject, session_info)) and os.path.isfile(
+                    self.get_output_file_path('skeleton', subject, session_info)):
+                logger.info(f'Skipping session {session_info} because already run before')
+                skip_session += 1
+                continue
 
             # get data
             data = self.process_session(session_folder, session_info)
             if data is None:
-                logger.info(f'Skipping session because skeleton data not found')
+                logger.info(f'Skipping session {session_info} because skeleton data not found')
+                skip_session += 1
                 continue
             inertial_df, skeleton_df = data
 
             # write files
             self.write_output_parquet(inertial_df, 'inertia', subject, session_info)
             self.write_output_parquet(skeleton_df, 'skeleton', subject, session_info)
+            write_session += 1
+        logger.info(f'{write_session} session(s) processed, {skip_session} sessions skipped')
 
 
 if __name__ == '__main__':
     upfall = UPFall(
         raw_folder='/mnt/data_drive/projects/raw datasets/UP-Fall',
         destination_folder='/mnt/data_drive/projects/UCD04 - Virtual sensor fusion/processed_parquet',
-        window_size_sec=4,
         inertial_freq=50,
         skeletal_freq=20
     )
