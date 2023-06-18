@@ -7,7 +7,7 @@ import torch as tr
 from tqdm import tqdm
 from torch.utils.data import DataLoader
 
-from vsf.flow.flow_functions import auto_classification_loss, cal_f1_score
+from vsf.flow.flow_functions import auto_classification_loss, f1_score_from_prob
 from vsf.flow.torch_callbacks import TorchCallback, CallbackAction
 
 
@@ -37,7 +37,7 @@ class BaseFlow(ABC):
 
         self.callbacks = callbacks
 
-    def train_loop(self, dataloader: Union[DataLoader, Tuple[DataLoader]]) -> None:
+    def train_epoch(self, dataloader: Union[DataLoader, Tuple[DataLoader]]) -> None:
         """
         Run a training epoch. This function ensures that the model is switched to training mode
 
@@ -45,9 +45,9 @@ class BaseFlow(ABC):
             dataloader: DataLoader object or a list of objects
         """
         self.model = self.model.train()
-        self._train_loop(dataloader)
+        self._train_epoch(dataloader)
 
-    def _train_loop(self, dataloader: Union[DataLoader, Tuple[DataLoader]]):
+    def _train_epoch(self, dataloader: Union[DataLoader, Tuple[DataLoader]]) -> None:
         """
         DO NOT call this method anywhere else but in the `train_loop` method.
         Run a training epoch.
@@ -57,7 +57,7 @@ class BaseFlow(ABC):
         """
         raise NotImplementedError
 
-    def valid_loop(self, dataloader: Union[DataLoader, Tuple[DataLoader]]) -> None:
+    def valid_epoch(self, dataloader: Union[DataLoader, Tuple[DataLoader]]) -> None:
         """
         Run a validation epoch. This function ensures that the model is switched to evaluation mode
 
@@ -65,9 +65,9 @@ class BaseFlow(ABC):
             dataloader: DataLoader object or a list of objects
         """
         self.model = self.model.eval()
-        self._valid_loop(dataloader)
+        self._valid_epoch(dataloader)
 
-    def _valid_loop(self, dataloader: Union[DataLoader, Tuple[DataLoader]]) -> None:
+    def _valid_epoch(self, dataloader: Union[DataLoader, Tuple[DataLoader]]) -> None:
         """
         DO NOT call this method anywhere else but in the `valid_loop` method.
         Run a validation epoch.
@@ -93,6 +93,32 @@ class BaseFlow(ABC):
         ]
         return actions
 
+    def _test_epoch(self, dataloader: Union[DataLoader, Tuple[DataLoader]]) -> any:
+        """
+        DO NOT call this method anywhere else but in the `run_test_epoch` method.
+        Run a test epoch.
+
+        Args:
+            dataloader: DataLoader object or a list of objects
+
+        Returns:
+            any form of test score
+        """
+        raise NotImplementedError
+
+    def run_test_epoch(self, dataloader: Union[DataLoader, Tuple[DataLoader]]) -> any:
+        """
+        Run a test epoch. This function ensures that the model is switched to evaluation mode
+
+        Args:
+            dataloader: DataLoader object or a list of objects
+
+        Returns:
+            any form of test score
+        """
+        self.model = self.model.eval()
+        return self._test_epoch(dataloader)
+
     def run(self, train_loader: Union[DataLoader, List[DataLoader]], valid_loader: Union[DataLoader, List[DataLoader]],
             num_epochs: int) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
@@ -114,8 +140,8 @@ class BaseFlow(ABC):
         for epoch in range(1, num_epochs + 1):
             print(f"-----------------\nEpoch {epoch}")
 
-            self.train_loop(train_loader)
-            self.valid_loop(valid_loader)
+            self.train_epoch(train_loader)
+            self.valid_epoch(valid_loader)
 
             callback_actions = self.run_callbacks(epoch)
             if CallbackAction.STOP_TRAINING in callback_actions:

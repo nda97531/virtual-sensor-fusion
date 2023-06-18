@@ -42,9 +42,9 @@ def ypred_2_categorical(y_pred):
     return y_pred
 
 
-def cal_f1_score(y_true, y_pred):
+def f1_score_from_prob(y_true, y_pred):
     """
-    Calculate F1 score
+    Calculate F1 score from categorical labels and predicted probabilities
 
     Args:
         y_true: 1d array/tensor shape [num samples]
