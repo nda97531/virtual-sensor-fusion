@@ -374,13 +374,13 @@ class UPFall(QuickProcess):
             # get session info
             subject, activity, trial = self.get_info_from_session_folder(session_folder)
             session_info = f'Subject{subject}Activity{activity}Trial{trial}'
-            logger.info(f'Starting session {session_info}')
 
             if os.path.isfile(self.get_output_file_path('inertia', subject, session_info)) and os.path.isfile(
                     self.get_output_file_path('skeleton', subject, session_info)):
                 logger.info(f'Skipping session {session_info} because already run before')
                 skip_session += 1
                 continue
+            logger.info(f'Starting session {session_info}')
 
             # get data
             data = self.process_session(session_folder, session_info)
