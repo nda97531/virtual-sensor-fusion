@@ -1,4 +1,3 @@
-from typing import Union, Tuple
 import torch as tr
 from tqdm import tqdm
 from torch.utils.data import DataLoader
@@ -9,7 +8,7 @@ from vsf.flow.flow_functions import f1_score_from_prob
 
 
 class SingleTaskFlow(BaseFlow):
-    def _train_epoch(self, dataloader: Union[DataLoader, Tuple[DataLoader]]) -> None:
+    def _train_epoch(self, dataloader: DataLoader) -> None:
         train_loss = 0
         y_true = []
         y_pred = []
@@ -38,7 +37,7 @@ class SingleTaskFlow(BaseFlow):
         self.train_log.append({'loss': train_loss, 'metric': metric})
         print(f'Train: {self.train_log[-1]}')
 
-    def _valid_epoch(self, dataloader: Union[DataLoader, Tuple[DataLoader]]) -> None:
+    def _valid_epoch(self, dataloader: DataLoader) -> None:
         num_batches = len(dataloader)
         valid_loss = 0
 
@@ -62,7 +61,7 @@ class SingleTaskFlow(BaseFlow):
         self.valid_log.append({'loss': valid_loss, 'metric': metric})
         print(f'Valid: {self.valid_log[-1]}')
 
-    def _test_epoch(self, dataloader: Union[DataLoader, Tuple[DataLoader]]) -> dict:
+    def _test_epoch(self, dataloader: DataLoader) -> dict:
         y_true = []
         y_pred = []
         with tr.no_grad():

@@ -1,13 +1,11 @@
 from abc import ABC
 
 import pandas as pd
-import numpy as np
-from typing import List, Union, Tuple
+from typing import List, Union, Tuple, Dict
 import torch as tr
-from tqdm import tqdm
 from torch.utils.data import DataLoader
 
-from vsf.flow.flow_functions import auto_classification_loss, f1_score_from_prob
+from vsf.flow.flow_functions import auto_classification_loss
 from vsf.flow.torch_callbacks import TorchCallback, CallbackAction
 
 
@@ -37,7 +35,7 @@ class BaseFlow(ABC):
 
         self.callbacks = callbacks
 
-    def train_epoch(self, dataloader: Union[DataLoader, Tuple[DataLoader]]) -> None:
+    def train_epoch(self, dataloader: Union[DataLoader, Dict[str, DataLoader]]) -> None:
         """
         Run a training epoch. This function ensures that the model is switched to training mode
 
@@ -47,7 +45,7 @@ class BaseFlow(ABC):
         self.model = self.model.train()
         self._train_epoch(dataloader)
 
-    def _train_epoch(self, dataloader: Union[DataLoader, Tuple[DataLoader]]) -> None:
+    def _train_epoch(self, dataloader: Union[DataLoader, Dict[str, DataLoader]]) -> None:
         """
         DO NOT call this method anywhere else but in the `train_loop` method.
         Run a training epoch.
@@ -57,7 +55,7 @@ class BaseFlow(ABC):
         """
         raise NotImplementedError
 
-    def valid_epoch(self, dataloader: Union[DataLoader, Tuple[DataLoader]]) -> None:
+    def valid_epoch(self, dataloader: Union[DataLoader, Dict[str, DataLoader]]) -> None:
         """
         Run a validation epoch. This function ensures that the model is switched to evaluation mode
 
@@ -67,7 +65,7 @@ class BaseFlow(ABC):
         self.model = self.model.eval()
         self._valid_epoch(dataloader)
 
-    def _valid_epoch(self, dataloader: Union[DataLoader, Tuple[DataLoader]]) -> None:
+    def _valid_epoch(self, dataloader: Union[DataLoader, Dict[str, DataLoader]]) -> None:
         """
         DO NOT call this method anywhere else but in the `valid_loop` method.
         Run a validation epoch.
@@ -93,7 +91,7 @@ class BaseFlow(ABC):
         ]
         return actions
 
-    def _test_epoch(self, dataloader: Union[DataLoader, Tuple[DataLoader]]) -> any:
+    def _test_epoch(self, dataloader: Union[DataLoader, Dict[str, DataLoader]]) -> any:
         """
         DO NOT call this method anywhere else but in the `run_test_epoch` method.
         Run a test epoch.
@@ -106,7 +104,7 @@ class BaseFlow(ABC):
         """
         raise NotImplementedError
 
-    def run_test_epoch(self, dataloader: Union[DataLoader, Tuple[DataLoader]]) -> any:
+    def run_test_epoch(self, dataloader: Union[DataLoader, Dict[str, DataLoader]]) -> any:
         """
         Run a test epoch. This function ensures that the model is switched to evaluation mode
 
@@ -119,8 +117,11 @@ class BaseFlow(ABC):
         self.model = self.model.eval()
         return self._test_epoch(dataloader)
 
-    def run(self, train_loader: Union[DataLoader, List[DataLoader]], valid_loader: Union[DataLoader, List[DataLoader]],
-            num_epochs: int) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    def run(self,
+            train_loader: Union[DataLoader, Dict[str, DataLoader]],
+            valid_loader: Union[DataLoader, Dict[str, DataLoader]],
+            num_epochs: int
+            ) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
         Train the model
 
