@@ -1,3 +1,6 @@
 loguru
 orjson
 polars >= 0.18.2
+pandas
+numpy
+scikit-learn

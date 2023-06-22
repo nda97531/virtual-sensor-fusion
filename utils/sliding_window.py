@@ -1,17 +1,17 @@
 import numpy as np
 
 
-def sliding_window(data: np.ndarray, window_size: int, step_size: int, get_last: bool = True) -> np.ndarray:
+def sliding_window(data: np.ndarray, window_size: int, step_size: int, get_last: bool = False) -> np.ndarray:
     """
     Sliding window along the first axis of the input array.
     Args:
-        data:
-        window_size:
-        step_size:
-        get_last:
+        data: array shape [data length, ...]
+        window_size: window size (num rows)
+        step_size: step size (num rows)
+        get_last: whether to take the last rows as an addition window if they are not already included
 
     Returns:
-
+        array shape [num window, window length, ...]
     """
     num_windows = (len(data) - window_size) / step_size + 1
     if num_windows < 1:
@@ -44,7 +44,7 @@ def shifting_window(data: np.ndarray, window_size: int, max_num_windows: int, mi
 
     Args:
         data: array shape [data length, ...]
-        window_size: window size
+        window_size: window size (num rows)
         max_num_windows: desired number of windows, the actual number returned maybe smaller,
             depending on `min_step_size`
         min_step_size: only get multiple windows if 2 windows are farther than `min_step_size` from each other
