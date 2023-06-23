@@ -1,10 +1,11 @@
 from abc import ABC
+from copy import deepcopy
+from typing import List, Union, Tuple, Dict
+
 import pandas as pd
 import torch as tr
-from torch.utils.data import DataLoader
-from typing import List, Union, Tuple, Dict
 from torch.optim.lr_scheduler import ReduceLROnPlateau
-from copy import deepcopy
+from torch.utils.data import DataLoader
 
 from vsf.flow.flow_functions import auto_classification_loss
 from vsf.flow.torch_callbacks import TorchCallback, CallbackAction

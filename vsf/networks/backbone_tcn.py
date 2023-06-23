@@ -1,7 +1,8 @@
+import math
+
 import torch as tr
 import torch.nn as nn
 import torch.nn.functional as F
-import math
 from loguru import logger
 
 from .conv import Conv1dBlock

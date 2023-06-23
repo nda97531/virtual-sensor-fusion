@@ -1,21 +1,22 @@
 import os
-from typing import Tuple, Dict
-import torch as tr
 from copy import deepcopy
 from glob import glob
+from typing import Tuple, Dict
+
 import numpy as np
+import torch as tr
+from loguru import logger
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
-from loguru import logger
 
-from public_datasets.up_fall_dataset import UPFallNpyWindow, UPFallConst
-from vsf.data_generator.augment import Augmenter, ComposeAugmenters, TimeWarp, Rotation3D
+from vsf.data_generator.augment import Rotation3D
 from vsf.data_generator.classification_data_gen import ClassificationDataset, BalancedClassificationDataset
 from vsf.flow.single_task_flow import SingleTaskFlow
 from vsf.flow.torch_callbacks import ModelCheckpoint, EarlyStop
-from vsf.networks.complete_model import CompleteModel
 from vsf.networks.backbone_tcn import TCN
 from vsf.networks.classifier import FCClassifier
+from vsf.networks.complete_model import CompleteModel
+from vsf.public_datasets.up_fall_dataset import UPFallNpyWindow, UPFallConst
 
 
 def load_data(parquet_dir: str, window_size_sec=4, step_size_sec=2, min_step_size_sec=0.5,
@@ -33,7 +34,7 @@ def load_data(parquet_dir: str, window_size_sec=4, step_size_sec=2, min_step_siz
     Returns:
         a tuple of 3 dicts, each one:
             - key: label (int)
-            - value: data array shape [n, ..., channel] or label array shape []
+            - value: data array shape [n, ..., channel]
     """
     upfall = UPFallNpyWindow(
         parquet_root_dir=parquet_dir,
@@ -49,6 +50,7 @@ def load_data(parquet_dir: str, window_size_sec=4, step_size_sec=2, min_step_siz
     )
     df = upfall.run()
 
+    # split TRAIN, VALID, TEST
     # 1/3 subjects as test set
     test_set_idx = df['subject'] % 3 == 0
     test_set = df.loc[test_set_idx]
@@ -86,7 +88,7 @@ if __name__ == '__main__':
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--device', '-d', required=True)
+    parser.add_argument('--device', '-d', required=False)
 
     parser.add_argument('--name', '-n', default='exp1.1',
                         help='name of the experiment to create a folder to save weights')
@@ -99,12 +101,19 @@ if __name__ == '__main__':
                         help='path to save training logs and model weights')
     args = parser.parse_args()
 
+    NUM_REPEAT = 3
+    NUM_EPOCH = 200
+    LEARNING_RATE = 1e-2
+    EARLY_STOP_PATIENCE = 20
+    LR_SCHEDULER_PATIENCE = 10
+    TRAIN_BATCH_SIZE = 16
+
     # load data
     train_dict, valid_dict, test_dict = load_data(parquet_dir=args.data_folder)
 
     test_scores = []
     # train 3 times
-    for _ in range(3):
+    for _ in range(NUM_REPEAT):
         # create model
         backbone = TCN(
             input_shape=(200, 3),
@@ -116,8 +125,8 @@ if __name__ == '__main__':
             attention_conv_norm='batch'
         )
         classifier = FCClassifier(
-            n_features=128,
-            n_classes=1
+            n_features_in=128,
+            n_classes_out=len(train_dict)
         )
         model = CompleteModel(backbone=backbone, classifier=classifier, dropout=0.5)
 
@@ -129,16 +138,15 @@ if __name__ == '__main__':
 
         # create training config
         loss_fn = 'classification_auto'
-        optimizer = tr.optim.SGD(model.parameters(), lr=1e-2)
-        num_epochs = 40
+        optimizer = tr.optim.SGD(model.parameters(), lr=LEARNING_RATE)
         model_file_path = f'{save_folder}/single_task.pth'
         flow = SingleTaskFlow(
             model=model, loss_fn=loss_fn, optimizer=optimizer,
             device=args.device,
             callbacks=[
-                ModelCheckpoint(num_epochs, model_file_path),
-                EarlyStop(20),
-                ReduceLROnPlateau(optimizer=optimizer, mode='min', patience=10)
+                ModelCheckpoint(NUM_EPOCH, model_file_path),
+                EarlyStop(EARLY_STOP_PATIENCE),
+                ReduceLROnPlateau(optimizer=optimizer, mode='min', patience=LR_SCHEDULER_PATIENCE)
             ]
         )
 
@@ -146,12 +154,12 @@ if __name__ == '__main__':
         augmenter = Rotation3D(angle_range=180, p=1)
         train_set = BalancedClassificationDataset(deepcopy(train_dict), augmenter=augmenter)
         valid_set = ClassificationDataset(deepcopy(valid_dict))
-        train_loader = DataLoader(train_set, batch_size=16, shuffle=True)
+        train_loader = DataLoader(train_set, batch_size=TRAIN_BATCH_SIZE, shuffle=True)
         valid_loader = DataLoader(valid_set, batch_size=64, shuffle=False)
         train_log, valid_log = flow.run(
             train_loader=train_loader,
             valid_loader=valid_loader,
-            num_epochs=num_epochs
+            num_epochs=NUM_EPOCH
         )
 
         # test

@@ -1,8 +1,8 @@
 import pandas as pd
 import torch as tr
-from tqdm import tqdm
-from torch.utils.data import DataLoader
 from sklearn import metrics
+from torch.utils.data import DataLoader
+from tqdm import tqdm
 
 from vsf.flow.base_flow import BaseFlow
 from vsf.flow.flow_functions import f1_score_from_prob

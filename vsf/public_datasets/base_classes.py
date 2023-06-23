@@ -1,14 +1,15 @@
 import os
 import re
 from glob import glob
+
 import numpy as np
 import pandas as pd
 import polars as pl
 from loguru import logger
 from scipy.stats import mode
 
-from utils.sliding_window import shifting_window, sliding_window
-from utils.string import rreplace
+from vsf.utils.sliding_window import shifting_window, sliding_window
+from vsf.utils.string import rreplace
 
 MODAL_PATH_PATTERN = '{root}/{modal}'
 PARQUET_PATH_PATTERN = MODAL_PATH_PATTERN + '/subject_{subject}/{session}.parquet'

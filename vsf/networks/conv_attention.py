@@ -1,7 +1,9 @@
 from typing import Union
+
 import torch as tr
 import torch.nn as nn
 import torch.nn.functional as F
+
 from .conv import Conv1dBlock
 
 

@@ -1,7 +1,9 @@
 from typing import Union, List
+
 import numpy as np
 from transforms3d.axangles import axangle2mat
-from utils.number_array import gen_random_curves
+
+from vsf.utils.number_array import gen_random_curves
 
 
 def format_range(x: any, start_0: bool) -> np.ndarray:

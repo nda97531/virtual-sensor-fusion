@@ -1,8 +1,8 @@
-from typing import Union, Tuple, Dict
+from typing import Union, Tuple
+
 import torch as tr
-from tqdm import tqdm
 from torch.utils.data import DataLoader
-from sklearn import metrics
+from tqdm import tqdm
 
 from vsf.flow.base_flow import BaseFlow
 from vsf.flow.flow_functions import f1_score_from_prob

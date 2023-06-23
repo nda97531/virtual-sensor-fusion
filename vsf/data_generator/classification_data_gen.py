@@ -5,6 +5,18 @@ from torch.utils.data import Dataset
 from vsf.data_generator.augment import Augmenter
 
 
+def check_label_key(label_data_dict: dict):
+    """
+    Check if label values are valid
+
+    Args:
+        label_data_dict: a dict, key: label (int), value: data array shape [n, ..., channel]
+    """
+    labels = sorted(list(label_data_dict.keys()))
+    sorted_idx = list(range(len(label_data_dict)))
+    assert labels == sorted_idx, f'Invalid label values: {labels}'
+
+
 class ClassificationDataset(Dataset):
     def __init__(self, label_data_dict: dict, augmenter: Augmenter = None, float_precision: str = 'float32'):
         """
@@ -15,6 +27,8 @@ class ClassificationDataset(Dataset):
             augmenter: Augmenter object
             float_precision: convert data array into this data type, default is 'float32'
         """
+        check_label_key(label_data_dict)
+
         print('Label distribution:')
         for k, v in label_data_dict.items():
             print(k, ':', len(v))
@@ -58,6 +72,8 @@ class BalancedClassificationDataset(Dataset):
             shuffle: shuffle data after each epoch
             float_precision: convert data array into this data type, default is 'float32'
         """
+        check_label_key(label_data_dict)
+
         self.num_classes = len(label_data_dict)
         self.shuffle = shuffle
         self.augmenter = augmenter

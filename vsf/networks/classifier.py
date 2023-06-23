@@ -1,19 +1,20 @@
+from typing import Union
+
 import torch as tr
 import torch.nn as nn
-from typing import Union
 
 
 class FCClassifier(nn.Module):
-    def __init__(self, n_features: int, n_classes: int):
+    def __init__(self, n_features_in: int, n_classes_out: int):
         """
         FC classifier for single task
 
         Args:
-            n_features: input dim
-            n_classes: output dim
+            n_features_in: input dim
+            n_classes_out: output dim
         """
         super().__init__()
-        self.fc = nn.Linear(n_features, n_classes)
+        self.fc = nn.Linear(n_features_in, n_classes_out)
 
     def forward(self, x):
         x = self.fc(x)
@@ -21,18 +22,18 @@ class FCClassifier(nn.Module):
 
 
 class MultiFCClassifiers(nn.Module):
-    def __init__(self, n_features: int, n_classes: list):
+    def __init__(self, n_features_in: int, n_classes_out: list):
         """
         FC classifiers for multiple tasks
 
         Args:
-            n_features: input dim
-            n_classes: list of output dims
+            n_features_in: input dim
+            n_classes_out: list of output dims
         """
         super().__init__()
         self.fcs = nn.ModuleList()
-        for n_c in n_classes:
-            self.fcs.append(nn.Linear(n_features, n_c))
+        for n_c in n_classes_out:
+            self.fcs.append(nn.Linear(n_features_in, n_c))
 
     def forward(self, x, mask: Union[tr.Tensor, str]):
         """
@@ -54,7 +55,7 @@ class MultiFCClassifiers(nn.Module):
 
 
 if __name__ == '__main__':
-    model = MultiFCClassifiers(n_features=10, n_classes=[2, 2])
+    model = MultiFCClassifiers(n_features_in=10, n_classes_out=[2, 2])
     data = tr.ones([8, 10])
     mask = tr.Tensor([0, 1, 1, 1, 1, 1, 1, 1]).bool()
     output = model(data, mask)
