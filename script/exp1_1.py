@@ -88,9 +88,9 @@ if __name__ == '__main__':
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--device', '-d', required=False)
+    parser.add_argument('--device', '-d', required=True)
 
-    parser.add_argument('--name', '-n', default='exp1.1',
+    parser.add_argument('--name', '-n', default='exp1_1',
                         help='name of the experiment to create a folder to save weights')
 
     parser.add_argument('--data-folder', '-data',

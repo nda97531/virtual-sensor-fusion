@@ -77,17 +77,17 @@ class TCN(nn.Module):
             self.flatten = lambda x: F.adaptive_avg_pool1d(x, 1).squeeze(-1)
         elif "attention gap" in how_flatten:
             if how_flatten == "channel attention gap":
-                cbam = CBAM(channel_gate=ChannelGate(
+                self.cbam = CBAM(channel_gate=ChannelGate(
                     gate_channels=n_tcn_channels[-1],
                     reduction_ratio=math.sqrt(n_tcn_channels[-1])
                 ))
             elif how_flatten == "spatial attention gap":
-                cbam = CBAM(spatial_gate=SpatialGate(
+                self.cbam = CBAM(spatial_gate=SpatialGate(
                     input_len=input_shape[0],
                     conv_norm=attention_conv_norm
                 ))
             else:
-                cbam = CBAM(
+                self.cbam = CBAM(
                     channel_gate=ChannelGate(
                         gate_channels=n_tcn_channels[-1],
                         reduction_ratio=math.sqrt(n_tcn_channels[-1])
@@ -97,7 +97,7 @@ class TCN(nn.Module):
                         conv_norm=attention_conv_norm
                     )
                 )
-            self.flatten = lambda x: F.adaptive_avg_pool1d(cbam(x), 1).squeeze(-1)
+            self.flatten = lambda x: F.adaptive_avg_pool1d(self.cbam(x), 1).squeeze(-1)
         else:
             raise ValueError("how_flatten must be 'last time step'/'gap'/'attention gap'/"
                              "'channel attention gap'/'spatial attention gap'")
