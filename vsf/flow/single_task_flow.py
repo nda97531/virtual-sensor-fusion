@@ -1,3 +1,4 @@
+import pandas as pd
 import torch as tr
 from tqdm import tqdm
 from torch.utils.data import DataLoader
@@ -43,14 +44,14 @@ class SingleTaskFlow(BaseFlow):
 
         y_true = []
         y_pred = []
-        with tr.no_grad():
-            for x, y in dataloader:
-                x = x.to(self.device)
-                y = y.to(self.device)
-                pred = self.model(x)
-                valid_loss += self.loss_fn(pred, y).item()
-                y_true.append(y)
-                y_pred.append(pred)
+        # no need to call tr.no_grad() because the parent class handles it
+        for x, y in dataloader:
+            x = x.to(self.device)
+            y = y.to(self.device)
+            pred = self.model(x)
+            valid_loss += self.loss_fn(pred, y).item()
+            y_true.append(y)
+            y_pred.append(pred)
 
         valid_loss /= num_batches
         y_true = tr.concatenate(y_true).to('cpu')
@@ -61,20 +62,21 @@ class SingleTaskFlow(BaseFlow):
         self.valid_log.append({'loss': valid_loss, 'metric': metric})
         print(f'Valid: {self.valid_log[-1]}')
 
-    def _test_epoch(self, dataloader: DataLoader) -> dict:
+    def _test_epoch(self, dataloader: DataLoader, model: tr.nn.Module) -> pd.DataFrame:
         y_true = []
         y_pred = []
-        with tr.no_grad():
-            for x, y in dataloader:
-                x = x.to(self.device)
-                y = y.to(self.device)
-                pred = self.model(x)
-                y_true.append(y)
-                y_pred.append(pred)
+        # no need to call tr.no_grad() because the parent class handles it
+        for x, y in dataloader:
+            x = x.to(self.device)
+            y = y.to(self.device)
+            pred = model(x)
+            y_true.append(y)
+            y_pred.append(pred)
 
         y_true = tr.concatenate(y_true).to('cpu')
         y_pred = tr.concatenate(y_pred).to('cpu').argmax(axis=-1)
         report = metrics.classification_report(y_true, y_pred, digits=4, output_dict=True)
+        report = pd.DataFrame(report)
         return report
 
 

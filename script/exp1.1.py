@@ -1,11 +1,12 @@
 import os
 from typing import Tuple, Dict
-import torch
+import torch as tr
 from copy import deepcopy
 from glob import glob
 import numpy as np
-from matplotlib import pyplot as plt
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
+from loguru import logger
 
 from public_datasets.up_fall_dataset import UPFallNpyWindow, UPFallConst
 from vsf.data_generator.augment import Augmenter, ComposeAugmenters, TimeWarp, Rotation3D
@@ -85,7 +86,7 @@ if __name__ == '__main__':
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--device', '-d', type=str, required=False)
+    parser.add_argument('--device', '-d', required=True)
 
     parser.add_argument('--name', '-n', default='exp1.1',
                         help='name of the experiment to create a folder to save weights')
@@ -101,16 +102,9 @@ if __name__ == '__main__':
     # load data
     train_dict, valid_dict, test_dict = load_data(parquet_dir=args.data_folder)
 
+    test_scores = []
     # train 3 times
     for _ in range(3):
-        # create data loaders
-        augmenter = Rotation3D(angle_range=180, p=1)
-
-        train_set = BalancedClassificationDataset(deepcopy(train_dict), augmenter=augmenter)
-        valid_set = ClassificationDataset(deepcopy(valid_dict))
-        train_loader = DataLoader(train_set, batch_size=16, shuffle=True)
-        valid_loader = DataLoader(valid_set, batch_size=64, shuffle=False)
-
         # create model
         backbone = TCN(
             input_shape=(200, 3),
@@ -135,25 +129,42 @@ if __name__ == '__main__':
 
         # create training config
         loss_fn = 'classification_auto'
-        optimizer = torch.optim.SGD(model.parameters(), lr=1e-2)
+        optimizer = tr.optim.SGD(model.parameters(), lr=1e-2)
         num_epochs = 40
-
+        model_file_path = f'{save_folder}/single_task.pth'
         flow = SingleTaskFlow(
             model=model, loss_fn=loss_fn, optimizer=optimizer,
             device=args.device,
             callbacks=[
-                ModelCheckpoint(num_epochs, f'{save_folder}/single_task.pth'),
-                # EarlyStop(10)
+                ModelCheckpoint(num_epochs, model_file_path),
+                EarlyStop(20),
+                ReduceLROnPlateau(optimizer=optimizer, mode='min', patience=10)
             ]
         )
 
+        # train and valid
+        augmenter = Rotation3D(angle_range=180, p=1)
+        train_set = BalancedClassificationDataset(deepcopy(train_dict), augmenter=augmenter)
+        valid_set = ClassificationDataset(deepcopy(valid_dict))
+        train_loader = DataLoader(train_set, batch_size=16, shuffle=True)
+        valid_loader = DataLoader(valid_set, batch_size=64, shuffle=False)
         train_log, valid_log = flow.run(
             train_loader=train_loader,
             valid_loader=valid_loader,
             num_epochs=num_epochs
         )
 
+        # test
+        test_set = ClassificationDataset(deepcopy(valid_dict))
+        test_loader = DataLoader(test_set, batch_size=64, shuffle=False)
+        test_score = flow.run_test_epoch(test_loader, model_state_dict=tr.load(model_file_path))
+        test_scores.append(test_score)
+
+        # save log
         train_log.to_csv(f'{save_folder}/train.csv', index=False)
         valid_log.to_csv(f'{save_folder}/valid.csv', index=False)
+        test_score.to_csv(f'{save_folder}/test.csv', index=False)
+        logger.info("Done!")
 
-        print("Done!")
+    print('Mean test score:')
+    print(sum(test_scores) / len(test_scores))

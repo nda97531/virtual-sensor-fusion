@@ -386,7 +386,7 @@ if __name__ == '__main__':
     parquet_dir = '/mnt/data_drive/projects/UCD04 - Virtual sensor fusion/processed_parquet/UP-Fall'
     inertial_freq = 50
     skeletal_freq = 20
-    window_size_sec = 3
+    window_size_sec = 4
     step_size_sec = 1.5
     min_step_size_sec = 0.5
 

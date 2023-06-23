@@ -1,9 +1,10 @@
 from abc import ABC
-
 import pandas as pd
-from typing import List, Union, Tuple, Dict
 import torch as tr
 from torch.utils.data import DataLoader
+from typing import List, Union, Tuple, Dict
+from torch.optim.lr_scheduler import ReduceLROnPlateau
+from copy import deepcopy
 
 from vsf.flow.flow_functions import auto_classification_loss
 from vsf.flow.torch_callbacks import TorchCallback, CallbackAction
@@ -63,7 +64,8 @@ class BaseFlow(ABC):
             dataloader: DataLoader object or a list of objects
         """
         self.model = self.model.eval()
-        self._valid_epoch(dataloader)
+        with tr.no_grad():
+            self._valid_epoch(dataloader)
 
     def _valid_epoch(self, dataloader: Union[DataLoader, Dict[str, DataLoader]]) -> None:
         """
@@ -85,37 +87,57 @@ class BaseFlow(ABC):
         Returns:
 
         """
-        actions = [
-            callback.on_epoch_end(epoch, self.model, self.train_log[-1]['loss'], self.valid_log[-1]['loss'])
-            for callback in self.callbacks
-        ]
+        actions = []
+
+        for callback in self.callbacks:
+            if isinstance(callback, TorchCallback):
+                actions.append(
+                    callback.on_epoch_end(epoch, self.model, self.train_log[-1]['loss'], self.valid_log[-1]['loss'])
+                )
+            elif isinstance(callback, ReduceLROnPlateau):
+                callback.step(self.valid_log[-1]['loss'] if callback.mode == 'min'
+                              else self.valid_log[-1]['metric'])
+            else:
+                raise ValueError(f'Unsupported callback: {type(callback)}')
+
         return actions
 
-    def _test_epoch(self, dataloader: Union[DataLoader, Dict[str, DataLoader]]) -> any:
+    def _test_epoch(self, dataloader: Union[DataLoader, Dict[str, DataLoader]], model: tr.nn.Module) -> any:
         """
         DO NOT call this method anywhere else but in the `run_test_epoch` method.
         Run a test epoch.
 
         Args:
             dataloader: DataLoader object or a list of objects
+            model: model used for testing
 
         Returns:
             any form of test score
         """
         raise NotImplementedError
 
-    def run_test_epoch(self, dataloader: Union[DataLoader, Dict[str, DataLoader]]) -> any:
+    def run_test_epoch(self, dataloader: Union[DataLoader, Dict[str, DataLoader]],
+                       model_state_dict: dict = None) -> any:
         """
         Run a test epoch. This function ensures that the model is switched to evaluation mode
 
         Args:
             dataloader: DataLoader object or a list of objects
+            model_state_dict: if provided, load this state dict before testing (without changing `self.model`)
 
         Returns:
             any form of test score
         """
-        self.model = self.model.eval()
-        return self._test_epoch(dataloader)
+        if model_state_dict is not None:
+            model = deepcopy(self.model)
+            model.load_state_dict(model_state_dict)
+        else:
+            model = self.model
+        model = model.eval()
+
+        with tr.no_grad():
+            test_result = self._test_epoch(dataloader, model)
+        return test_result
 
     def run(self,
             train_loader: Union[DataLoader, Dict[str, DataLoader]],
@@ -142,7 +164,8 @@ class BaseFlow(ABC):
             print(f"-----------------\nEpoch {epoch}")
 
             self.train_epoch(train_loader)
-            self.valid_epoch(valid_loader)
+            if valid_loader is not None:
+                self.valid_epoch(valid_loader)
 
             callback_actions = self.run_callbacks(epoch)
             if CallbackAction.STOP_TRAINING in callback_actions:
