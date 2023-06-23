@@ -381,7 +381,7 @@ class UPFallNpyWindow(NpyWindowFormatter):
         df_sampling_rate = 1000 / (df_sampling_rate[1] - df_sampling_rate[0])
         window_size_row = int(self.window_size_sec * df_sampling_rate)
 
-        # sliding/shifting window
+        # if this is a session of short activity, run shifting window
         if session_activity in UPFallConst.SHORT_ACTIVITIES:
             org_label = df.get_column('label').to_numpy()
             bin_label = org_label == session_activity
@@ -393,12 +393,20 @@ class UPFallNpyWindow(NpyWindowFormatter):
             min_step_size_row = int(self.min_step_size_sec * df_sampling_rate)
             windows = shifting_window(df.to_numpy(), window_size=window_size_row, max_num_windows=self.max_short_window,
                                       min_step_size=min_step_size_row, start_idx=start, end_idx=end)
+            # if this is a short activity, assign session label
+            windows_label = np.full(shape=len(windows), fill_value=session_activity, dtype=int)
+
+        # if this is a session of long activity, run sliding window
         else:
             step_size_row = int(self.step_size_sec * df_sampling_rate)
             windows = sliding_window(df.to_numpy(), window_size=window_size_row, step_size=step_size_row)
 
+            # vote 1 label for each window
+            windows_label = windows[:, :, df.columns.index('label')].astype(int)
+            windows_label = mode(windows_label, axis=-1, nan_policy='raise', keepdims=False).mode
+
         # list of sub-modals within the DF
-        sub_modals_col_idx = None if self.modal_cols is None else self.modal_cols[modality].copy()
+        sub_modals_col_idx = self.modal_cols[modality].copy()
         # get column index for each sub-modal
         for k, v in sub_modals_col_idx.items():
             if v is None:
@@ -411,34 +419,57 @@ class UPFallNpyWindow(NpyWindowFormatter):
                 # get specified cols
                 sub_modals_col_idx[k] = [df.columns.index(col) for col in v]
 
-        sub_modals_col_idx['label'] = df.columns.index('label')
-
         # split windows by sub-modal
         result = {sub_modal: windows[:, :, sub_modal_col_idx]
                   for sub_modal, sub_modal_col_idx in sub_modals_col_idx.items()}
-        # vote 1 label for each window
-        result['label'] = mode(result['label'].astype(int), axis=-1, nan_policy='raise', keepdims=False).mode
+        result['label'] = windows_label
 
         return result
 
     def run(self) -> pd.DataFrame:
+        # get list of parquet files
         parquet_sessions = self.get_parquet_files()
 
         result = []
         # for each session
         for parquet_session in parquet_sessions.iter_rows(named=True):
             # get session info
-            _, subject, session = self.get_parquet_session_info(list(parquet_session.values())[0])
-            session_activity = int(re.match('Subject(?:[0-9]*)Activity([0-9]*)Trial(?:[0-9]*)', session).group(1))
+            _, subject, session_id = self.get_parquet_session_info(list(parquet_session.values())[0])
+            session_regex = re.match('Subject(?:[0-9]*)Activity([0-9]*)Trial([0-9]*)', session_id)
+            session_label, session_trial = (int(session_regex.group(i)) for i in [1, 2])
 
-            session_result = {'subject': subject}
-            # for each parquet modal
+            session_result = {}
+            modal_labels = []
+            min_num_windows = float('inf')
+            # for each parquet modal, run sliding window
             for modal, parquet_file in parquet_session.items():
+                if modal not in self.modal_cols:
+                    continue
                 # read DF
                 df = pl.read_parquet(parquet_file)
                 # sliding window
-                windows = self.get_windows_from_df(df, session_activity, modal)
+                windows = self.get_windows_from_df(df, session_label, modal)
+
+                # append result of this modal
+                min_num_windows = min(min_num_windows, len(windows['label']))
+                modal_labels.append(windows.pop('label'))
                 session_result.update(windows)
+
+            # make all modals have the same number of windows (they may be different because of sampling rates)
+            session_result = {k: v[:min_num_windows] for k, v in session_result.items()}
+
+            # add subject info
+            session_result['subject'] = int(subject)
+
+            # check if label of all modals are the same
+            for modal_label in modal_labels[1:]:
+                assert (modal_label[:min_num_windows] == modal_labels[0][:min_num_windows]).all(), \
+                    'different labels between modals'
+            # add label info
+            session_result['label'] = modal_labels[0][:min_num_windows]
+
+            # add trial info
+            session_result['trial'] = session_trial
 
             result.append(session_result)
         result = pd.DataFrame(result)

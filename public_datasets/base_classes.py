@@ -107,7 +107,30 @@ class NpyWindowFormatter:
         self.step_size_sec = step_size_sec
         self.min_step_size_sec = min_step_size_sec
         self.max_short_window = max_short_window
+
+        # standardise `modal_cols`
+        parquet_modals = self.get_parquet_modals()
+        # compose dict of used columns if it has not already been defined
+        if modal_cols is None:
+            modal_cols = {modal: {modal: None} for modal in parquet_modals}
+        else:
+            for parquet_modal, sub_modal_dict in modal_cols.items():
+                if sub_modal_dict is None:
+                    modal_cols[parquet_modal] = {parquet_modal: None}
+
         self.modal_cols = modal_cols
+
+    def get_parquet_modals(self) -> list:
+        """
+        Get a list of parquet modal names
+
+        Returns:
+            list of strings
+        """
+        # scan for modal list first
+        modal_folders = glob(MODAL_PATH_PATTERN.format(root=self.parquet_root_dir, modal='*'))
+        modals = [p.removesuffix('/').split('/')[-1] for p in modal_folders]
+        return modals
 
     def get_parquet_files(self) -> pl.DataFrame:
         """
@@ -116,9 +139,7 @@ class NpyWindowFormatter:
         Returns:
             a DataFrame, each column is a parquet modality, each row is a session, cells are paths to parquet files
         """
-        # scan for modal list first
-        modal_folders = glob(MODAL_PATH_PATTERN.format(root=self.parquet_root_dir, modal='*'))
-        modals = [p.removesuffix('/').split('/')[-1] for p in modal_folders]
+        modals = self.get_parquet_modals()
 
         # glob first modal
         first_modal_parquets = sorted(glob(PARQUET_PATH_PATTERN.format(

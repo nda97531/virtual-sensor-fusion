@@ -5,12 +5,13 @@ from torch.utils.data import Dataset
 from vsf.data_generator.augment import Augmenter
 
 
-class BasicArrayDataset(Dataset):
+class ClassificationDataset(Dataset):
     def __init__(self, label_data_dict: dict, augmenter: Augmenter = None, float_precision: str = 'float32'):
         """
+        Basic data generator for classification task
 
         Args:
-            label_data_dict: key: label (int), value: data [n, ..., channel]
+            label_data_dict: key: label (int), value: data array shape [n, ..., channel]
             augmenter: Augmenter object
             float_precision: convert data array into this data type, default is 'float32'
         """
@@ -44,13 +45,15 @@ class BasicArrayDataset(Dataset):
         return len(self.label)
 
 
-class ResampleArrayDataset(Dataset):
+class BalancedClassificationDataset(Dataset):
     def __init__(self, label_data_dict: dict, augmenter: Augmenter = None, shuffle: bool = True,
                  float_precision: str = 'float32'):
         """
+        Balanced data generator for classification task.
+        It resamples so that all classes are sampled with the same probability.
 
         Args:
-            label_data_dict: key: label (int), value: data [n, ..., channel]
+            label_data_dict: key: label (int), value: data array shape [n, ..., channel]
             augmenter: Augmenter object
             shuffle: shuffle data after each epoch
             float_precision: convert data array into this data type, default is 'float32'
@@ -102,7 +105,7 @@ class ResampleArrayDataset(Dataset):
 if __name__ == '__main__':
     from torch.utils.data import DataLoader
 
-    dataset = ResampleArrayDataset({
+    dataset = BalancedClassificationDataset({
         0: np.arange(1) + 0,
         1: np.arange(2) + 100,
         2: np.arange(5) + 200,

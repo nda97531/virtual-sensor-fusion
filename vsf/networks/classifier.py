@@ -6,10 +6,11 @@ from typing import Union
 class FCClassifier(nn.Module):
     def __init__(self, n_features: int, n_classes: int):
         """
+        FC classifier for single task
 
         Args:
-            n_features:
-            n_classes:
+            n_features: input dim
+            n_classes: output dim
         """
         super().__init__()
         self.fc = nn.Linear(n_features, n_classes)
@@ -22,10 +23,11 @@ class FCClassifier(nn.Module):
 class MultiFCClassifiers(nn.Module):
     def __init__(self, n_features: int, n_classes: list):
         """
+        FC classifiers for multiple tasks
 
         Args:
-            n_features:
-            n_classes:
+            n_features: input dim
+            n_classes: list of output dims
         """
         super().__init__()
         self.fcs = nn.ModuleList()
@@ -34,6 +36,7 @@ class MultiFCClassifiers(nn.Module):
 
     def forward(self, x, mask: Union[tr.Tensor, str]):
         """
+        Forward function
 
         Args:
             x: input tensor

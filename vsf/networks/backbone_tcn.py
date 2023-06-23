@@ -11,23 +11,41 @@ from .conv_attention import CBAM, SpatialGate, ChannelGate
 class TCN(nn.Module):
     def __init__(self,
                  input_shape: tuple,
-                 how_flatten,
-                 n_tcn_channels=(64,) * 5 + (128,) * 2,  # type: list, tuple
-                 tcn_kernel_size=2,  # type:int
-                 dilation_base=2,  # type:int
-                 tcn_drop_rate=0.2,  # type: float
-                 use_spatial_dropout=False,
+                 how_flatten: str,
+                 n_tcn_channels: tuple = (64,) * 5 + (128,) * 2,
+                 tcn_kernel_size: int = 2,
+                 dilation_base: int = 2,
+                 tcn_drop_rate: float = 0.2,
+                 use_spatial_dropout: bool = False,
                  conv_norm: str = 'batch',
                  attention_conv_norm: str = 'batch'
                  ):
+        """
+        TCN backbone
+
+        Args:
+            input_shape: a tuple showing input shape to the model [window size, channel]
+            how_flatten: how to flatten feature vectors after TCN; choices are 'last time step'/'gap'/'attention gap'/
+                'channel attention gap'/'spatial attention gap'
+            n_tcn_channels: tuple of dim for each res-block in TCN
+            tcn_kernel_size: TCN kernel size
+            dilation_base: TCN dilation base; block number i will have dilation of `dilation_base`**i
+            tcn_drop_rate: dropout rate in TCN
+            use_spatial_dropout: whether to use spatial dropout (entire channel) or normal dropout
+            conv_norm: type of norm after conv layers
+            attention_conv_norm: type of norm after conv layers in the attention block
+        """
         super().__init__()
 
         self.B = len(n_tcn_channels)
         self.N = 2
         self.k = tcn_kernel_size
 
-        if self.receptive_field() < input_shape[0]:
-            logger.warning(f'Receptive field is smaller than input size: {self.receptive_field()} < {input_shape[0]}')
+        rec_field = self.receptive_field()
+        if rec_field < input_shape[0]:
+            logger.warning(f'Receptive field is smaller than input size: {rec_field} < {input_shape[0]}')
+        else:
+            logger.info(f'Window size: {input_shape[0]}; Receptive field: {rec_field}')
 
         layers = []
         for i in range(len(n_tcn_channels)):
@@ -35,13 +53,16 @@ class TCN(nn.Module):
             in_channels = input_shape[1] if i == 0 else n_tcn_channels[i - 1]
             out_channels = n_tcn_channels[i]
 
+            # only drop between res blocks, don't drop after the last block
+            block_dropout_rate = 0. if (i == len(n_tcn_channels) - 1) else tcn_drop_rate
+
             layers.append(ResTempBlock(
                 input_len=input_shape[0],
                 n_channels_in=in_channels,
                 n_channels_out=out_channels,
                 kernel_size=tcn_kernel_size,
                 dilation=dilation_rate,
-                dropout_rate=tcn_drop_rate,
+                dropout_rate=block_dropout_rate,
                 use_spatial_dropout=use_spatial_dropout,
                 n_conv_layers=2,
                 conv_norm=conv_norm,
@@ -55,17 +76,17 @@ class TCN(nn.Module):
             self.flatten = lambda x: F.adaptive_avg_pool1d(x, 1).squeeze(-1)
         elif "attention gap" in how_flatten:
             if how_flatten == "channel attention gap":
-                self.cbam = CBAM(channel_gate=ChannelGate(
+                cbam = CBAM(channel_gate=ChannelGate(
                     gate_channels=n_tcn_channels[-1],
                     reduction_ratio=math.sqrt(n_tcn_channels[-1])
                 ))
             elif how_flatten == "spatial attention gap":
-                self.cbam = CBAM(spatial_gate=SpatialGate(
+                cbam = CBAM(spatial_gate=SpatialGate(
                     input_len=input_shape[0],
                     conv_norm=attention_conv_norm
                 ))
             else:
-                self.cbam = CBAM(
+                cbam = CBAM(
                     channel_gate=ChannelGate(
                         gate_channels=n_tcn_channels[-1],
                         reduction_ratio=math.sqrt(n_tcn_channels[-1])
@@ -75,7 +96,7 @@ class TCN(nn.Module):
                         conv_norm=attention_conv_norm
                     )
                 )
-            self.flatten = lambda x: F.adaptive_avg_pool1d(self.cbam(x), 1).squeeze(-1)
+            self.flatten = lambda x: F.adaptive_avg_pool1d(cbam(x), 1).squeeze(-1)
         else:
             raise ValueError("how_flatten must be 'last time step'/'gap'/'attention gap'/"
                              "'channel attention gap'/'spatial attention gap'")
@@ -134,10 +155,6 @@ class ResTempBlock(nn.Module):
 
         block = []
         for i in range(n_conv_layers):
-            # only drop between ResBlock, don't drop after the last block
-            if i == n_conv_layers - 1:
-                dropout_rate = 0.
-
             block.append(Conv1dBlock(
                 input_len=input_len,
                 in_filters=n_channels_in,
