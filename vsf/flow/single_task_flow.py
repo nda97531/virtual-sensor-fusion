@@ -14,7 +14,7 @@ class SingleTaskFlow(BaseFlow):
         y_true = []
         y_pred = []
 
-        for batch, (x, y) in tqdm(enumerate(dataloader), ncols=0):
+        for batch, (x, y) in tqdm(enumerate(dataloader), total=len(dataloader), ncols=0):
             x = x.to(self.device)
             y = y.to(self.device)
 
