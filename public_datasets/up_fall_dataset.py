@@ -8,12 +8,10 @@ import polars as pl
 import re
 import orjson
 from loguru import logger
-from scipy.stats import mode
 
 from public_datasets.base_classes import ParquetDatasetFormatter, NpyWindowFormatter
 from public_datasets.constant import G_TO_MS2, DEG_TO_RAD
 from utils.pl_dataframe import resample_numeric_df as pl_resample_numeric_df
-from utils.sliding_window import shifting_window, sliding_window
 from utils.time import str_2_timestamp
 
 
@@ -357,78 +355,9 @@ class UPFallParquet(ParquetDatasetFormatter):
 
 
 class UPFallNpyWindow(NpyWindowFormatter):
-    def get_windows_from_df(self, df: pl.DataFrame, session_activity: int, modality: str) -> dict:
-        """
-        Slide windows from dataframe; If main activity of the session is a short activity, run shifting window instead
-
-        Args:
-            df: Dataframe
-            session_activity: main activity of this session
-            modality: parquet modality of this DF
-
-        Returns:
-            a dict, keys are sub-modal name from `self.modal_cols` and 'label', values are np array containing windows.
-            Example
-                {
-                    'acc': array [num windows, window length, features]
-                    'gyro': array [num windows, window length, features]
-                    'label': array [num windows]
-                }
-        """
-        # calculate window size row from window size sec
-        # Hz can be calculated from first 2 rows because this DF is already interpolated (constant interval timestamps)
-        df_sampling_rate = df.head(2).get_column('timestamp(ms)').to_list()
-        df_sampling_rate = 1000 / (df_sampling_rate[1] - df_sampling_rate[0])
-        window_size_row = int(self.window_size_sec * df_sampling_rate)
-
-        # if this is a session of short activity, run shifting window
-        if session_activity in UPFallConst.SHORT_ACTIVITIES:
-            org_label = df.get_column('label').to_numpy()
-            bin_label = org_label == session_activity
-            bin_label = np.concatenate([[False], bin_label, [False]])
-            bin_label = np.diff(bin_label)
-            start, end = bin_label.nonzero()[0]
-            end -= 1
-
-            min_step_size_row = int(self.min_step_size_sec * df_sampling_rate)
-            windows = shifting_window(df.to_numpy(), window_size=window_size_row, max_num_windows=self.max_short_window,
-                                      min_step_size=min_step_size_row, start_idx=start, end_idx=end)
-            # if this is a short activity, assign session label
-            windows_label = np.full(shape=len(windows), fill_value=session_activity, dtype=int)
-
-        # if this is a session of long activity, run sliding window
-        else:
-            step_size_row = int(self.step_size_sec * df_sampling_rate)
-            windows = sliding_window(df.to_numpy(), window_size=window_size_row, step_size=step_size_row)
-
-            # vote 1 label for each window
-            windows_label = windows[:, :, df.columns.index('label')].astype(int)
-            windows_label = mode(windows_label, axis=-1, nan_policy='raise', keepdims=False).mode
-
-        # list of sub-modals within the DF
-        sub_modals_col_idx = self.modal_cols[modality].copy()
-        # get column index for each sub-modal
-        for k, v in sub_modals_col_idx.items():
-            if v is None:
-                # get all feature cols by default
-                list_idx = list(range(df.shape[1]))
-                list_idx.remove(df.columns.index('timestamp(ms)'))
-                list_idx.remove(df.columns.index('label'))
-                sub_modals_col_idx[k] = list_idx
-            else:
-                # get specified cols
-                sub_modals_col_idx[k] = [df.columns.index(col) for col in v]
-
-        # split windows by sub-modal
-        result = {sub_modal: windows[:, :, sub_modal_col_idx]
-                  for sub_modal, sub_modal_col_idx in sub_modals_col_idx.items()}
-        result['label'] = windows_label
-
-        return result
-
     def run(self) -> pd.DataFrame:
         # get list of parquet files
-        parquet_sessions = self.get_parquet_files()
+        parquet_sessions = self.get_parquet_file_list()
 
         result = []
         # for each session
@@ -438,35 +367,12 @@ class UPFallNpyWindow(NpyWindowFormatter):
             session_regex = re.match('Subject(?:[0-9]*)Activity([0-9]*)Trial([0-9]*)', session_id)
             session_label, session_trial = (int(session_regex.group(i)) for i in [1, 2])
 
-            session_result = {}
-            modal_labels = []
-            min_num_windows = float('inf')
-            # for each parquet modal, run sliding window
-            for modal, parquet_file in parquet_session.items():
-                if modal not in self.modal_cols:
-                    continue
-                # read DF
-                df = pl.read_parquet(parquet_file)
-                # sliding window
-                windows = self.get_windows_from_df(df, session_label, modal)
-
-                # append result of this modal
-                min_num_windows = min(min_num_windows, len(windows['label']))
-                modal_labels.append(windows.pop('label'))
-                session_result.update(windows)
-
-            # make all modals have the same number of windows (they may be different because of sampling rates)
-            session_result = {k: v[:min_num_windows] for k, v in session_result.items()}
-
-            # add subject info
-            session_result['subject'] = int(subject)
-
-            # check if label of all modals are the same
-            for modal_label in modal_labels[1:]:
-                assert (modal_label[:min_num_windows] == modal_labels[0][:min_num_windows]).all(), \
-                    'different labels between modals'
-            # add label info
-            session_result['label'] = modal_labels[0][:min_num_windows]
+            session_result = self.process_parquet_to_windows(
+                parquet_session=parquet_session,
+                subject=subject,
+                session_label=session_label,
+                is_short_activity=session_label in UPFallConst.SHORT_ACTIVITIES
+            )
 
             # add trial info
             session_result['trial'] = session_trial

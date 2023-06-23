@@ -1,10 +1,13 @@
 import os
 import re
 from glob import glob
+import numpy as np
 import pandas as pd
 import polars as pl
 from loguru import logger
+from scipy.stats import mode
 
+from utils.sliding_window import shifting_window, sliding_window
 from utils.string import rreplace
 
 MODAL_PATH_PATTERN = '{root}/{modal}'
@@ -132,7 +135,7 @@ class NpyWindowFormatter:
         modals = [p.removesuffix('/').split('/')[-1] for p in modal_folders]
         return modals
 
-    def get_parquet_files(self) -> pl.DataFrame:
+    def get_parquet_file_list(self) -> pl.DataFrame:
         """
         Scan all parquet files in the root dir
 
@@ -186,6 +189,143 @@ class NpyWindowFormatter:
         ), parquet_path)
         info = tuple(info.group(i) for i in range(1, 4))
         return info
+
+    def slide_windows_from_modal_df(self, df: pl.DataFrame, modality: str, session_label: int,
+                                    is_short_activity: bool) -> dict:
+        """
+        Slide windows from dataframe of 1 modal.
+        If main activity of the session is a short activity, run shifting window instead.
+
+        Args:
+            df: Dataframe with 'timestamp(ms)' and 'label' columns, others are feature columns
+            modality: parquet modality of this DF
+            session_label: main label of this session, only used if `is_short_activity` is True
+            is_short_activity: whether this session is of short activities.
+                Only support short activities of ONE label in a session
+
+        Returns:
+            a dict, keys are sub-modal name from `self.modal_cols` and 'label', values are np array containing windows.
+            Example
+                {
+                    'acc': array [num windows, window length, features]
+                    'gyro': array [num windows, window length, features]
+                    'label': array [num windows], dtype: NOT float
+                }
+        """
+        # calculate window size row from window size sec
+        # Hz can be calculated from first 2 rows because this DF is already interpolated (constant interval timestamps)
+        df_sampling_rate = df.head(2).get_column('timestamp(ms)').to_list()
+        df_sampling_rate = 1000 / (df_sampling_rate[1] - df_sampling_rate[0])
+        window_size_row = int(self.window_size_sec * df_sampling_rate)
+
+        # if this is a session of short activity, run shifting window
+        if is_short_activity:
+            min_step_size_row = int(self.min_step_size_sec * df_sampling_rate)
+
+            # find short activity indices
+            org_label = df.get_column('label').to_numpy()
+            bin_label = org_label == session_label
+            bin_label = np.concatenate([[False], bin_label, [False]])
+            bin_label = np.diff(bin_label)
+            start_end_idx = bin_label.nonzero()[0].reshape([-1, 2])
+            start_end_idx[:, 1] -= 1
+
+            # shifting window for each short activity occurrence
+            windows = np.concatenate([
+                shifting_window(df.to_numpy(), window_size=window_size_row,
+                                max_num_windows=self.max_short_window,
+                                min_step_size=min_step_size_row, start_idx=start, end_idx=end)
+                for start, end in start_end_idx
+            ])
+
+            # if this is a short activity, assign session label
+            windows_label = np.full(shape=len(windows), fill_value=session_label, dtype=int)
+
+        # if this is a session of long activity, run sliding window
+        else:
+            step_size_row = int(self.step_size_sec * df_sampling_rate)
+            windows = sliding_window(df.to_numpy(), window_size=window_size_row, step_size=step_size_row)
+
+            # vote 1 label for each window
+            windows_label = windows[:, :, df.columns.index('label')].astype(int)
+            windows_label = mode(windows_label, axis=-1, nan_policy='raise', keepdims=False).mode
+
+        # list of sub-modals within the DF
+        sub_modals_col_idx = self.modal_cols[modality].copy()
+        # get column index for each sub-modal
+        for k, v in sub_modals_col_idx.items():
+            if v is None:
+                # get all feature cols by default
+                list_idx = list(range(df.shape[1]))
+                list_idx.remove(df.columns.index('timestamp(ms)'))
+                list_idx.remove(df.columns.index('label'))
+                sub_modals_col_idx[k] = list_idx
+            else:
+                # get specified cols
+                sub_modals_col_idx[k] = [df.columns.index(col) for col in v]
+
+        # split windows by sub-modal
+        result = {sub_modal: windows[:, :, sub_modal_col_idx]
+                  for sub_modal, sub_modal_col_idx in sub_modals_col_idx.items()}
+        result['label'] = windows_label
+
+        return result
+
+    def process_parquet_to_windows(self, parquet_session: dict, subject: any, session_label: int,
+                                   is_short_activity: bool):
+        """
+        Process from parquet files for modals to window data (np array). All parquet files are of ONE session.
+
+        Args:
+            parquet_session: dict with keys are modal names, values are parquet file paths
+            subject: subject ID
+            session_label: main label of this session
+            is_short_activity: whether this session is of short activities
+
+        Returns:
+            a dict, keys are all sub-modal names of a session, 'subject' and 'label';
+            values are np array containing windows.
+            Example
+                {
+                    'acc': array [num windows, window length, features]
+                    'gyro': array [num windows, window length, features]
+                    'skeleton': array [num windows, window length, features]
+                    'label': array [num windows], dtype: int
+                    'subject': subject ID
+                }
+        """
+        session_result = {}
+        modal_labels = []
+        min_num_windows = float('inf')
+        # for each parquet modal, run sliding window
+        for modal, parquet_file in parquet_session.items():
+            if modal not in self.modal_cols:
+                continue
+            # read DF
+            df = pl.read_parquet(parquet_file)
+            # sliding window
+            windows = self.slide_windows_from_modal_df(df=df, modality=modal, session_label=session_label,
+                                                       is_short_activity=is_short_activity)
+
+            # append result of this modal
+            min_num_windows = min(min_num_windows, len(windows['label']))
+            modal_labels.append(windows.pop('label'))
+            session_result.update(windows)
+
+        # make all modals have the same number of windows (they may be different because of sampling rates)
+        session_result = {k: v[:min_num_windows] for k, v in session_result.items()}
+
+        # add subject info
+        session_result['subject'] = int(subject)
+
+        # check if label of all modals are the same
+        for modal_label in modal_labels[1:]:
+            assert (modal_label[:min_num_windows] == modal_labels[0][:min_num_windows]).all(), \
+                'different labels between modals'
+        # add label info
+        session_result['label'] = modal_labels[0][:min_num_windows]
+
+        return session_result
 
     def run(self) -> pd.DataFrame:
         """
