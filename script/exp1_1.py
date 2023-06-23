@@ -171,7 +171,7 @@ if __name__ == '__main__':
         # save log
         train_log.to_csv(f'{save_folder}/train.csv', index=False)
         valid_log.to_csv(f'{save_folder}/valid.csv', index=False)
-        test_score.to_csv(f'{save_folder}/test.csv', index=False)
+        test_score.to_csv(f'{save_folder}/test.csv', index=True)
         logger.info("Done!")
 
     print('Mean test score:')
