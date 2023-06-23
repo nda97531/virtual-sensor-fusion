@@ -102,16 +102,17 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     NUM_REPEAT = 3
-    NUM_EPOCH = 200
+    NUM_EPOCH = 300
     LEARNING_RATE = 1e-2
-    EARLY_STOP_PATIENCE = 20
-    LR_SCHEDULER_PATIENCE = 10
+    EARLY_STOP_PATIENCE = 30
+    LR_SCHEDULER_PATIENCE = 15
     TRAIN_BATCH_SIZE = 16
 
     # load data
     train_dict, valid_dict, test_dict = load_data(parquet_dir=args.data_folder)
 
     test_scores = []
+    model_paths = []
     # train 3 times
     for _ in range(NUM_REPEAT):
         # create model
@@ -163,10 +164,11 @@ if __name__ == '__main__':
         )
 
         # test
-        test_set = ClassificationDataset(deepcopy(valid_dict))
+        test_set = ClassificationDataset(deepcopy(test_dict))
         test_loader = DataLoader(test_set, batch_size=64, shuffle=False)
         test_score = flow.run_test_epoch(test_loader, model_state_dict=tr.load(model_file_path))
         test_scores.append(test_score)
+        model_paths.append(model_file_path)
 
         # save log
         train_log.to_csv(f'{save_folder}/train.csv', index=False)
@@ -174,5 +176,5 @@ if __name__ == '__main__':
         test_score.to_csv(f'{save_folder}/test.csv', index=True)
         logger.info("Done!")
 
-    print('Mean test score:')
+    print(f'Mean test score of {NUM_REPEAT} runs:')
     print(sum(test_scores) / len(test_scores))

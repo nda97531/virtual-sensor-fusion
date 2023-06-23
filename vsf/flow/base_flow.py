@@ -169,7 +169,7 @@ class BaseFlow(ABC):
                 'number of tasks in train_loader and valid_loader must be the same'
 
         for epoch in range(1, num_epochs + 1):
-            print(f"-----------------\nEpoch {epoch}")
+            print(f"-----------------\nEpoch {epoch}/{num_epochs}")
 
             self.train_epoch(train_loader)
             if valid_loader is not None:
