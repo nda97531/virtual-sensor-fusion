@@ -45,15 +45,20 @@ class BaseFlow(ABC):
             dataloader: DataLoader object or a list of objects
         """
         self.model = self.model.train()
-        self._train_epoch(dataloader)
+        training_log = self._train_epoch(dataloader)
+        print(f'Train: {training_log}')
+        self.train_log.append(training_log)
 
-    def _train_epoch(self, dataloader: Union[DataLoader, Dict[str, DataLoader]]) -> None:
+    def _train_epoch(self, dataloader: Union[DataLoader, Dict[str, DataLoader]]) -> dict:
         """
         DO NOT call this method anywhere else but in the `train_loop` method.
         Run a training epoch.
 
         Args:
             dataloader: DataLoader object or a list of objects
+
+        Returns:
+            a dict of training log. Example: {'loss': 0.1, 'metric': 0.99, 'lr': 0.001}
         """
         raise NotImplementedError
 
@@ -66,9 +71,11 @@ class BaseFlow(ABC):
         """
         self.model = self.model.eval()
         with tr.no_grad():
-            self._valid_epoch(dataloader)
+            valid_log = self._valid_epoch(dataloader)
+        print(f'Valid: {valid_log}')
+        self.valid_log.append(valid_log)
 
-    def _valid_epoch(self, dataloader: Union[DataLoader, Dict[str, DataLoader]]) -> None:
+    def _valid_epoch(self, dataloader: Union[DataLoader, Dict[str, DataLoader]]) -> dict:
         """
         DO NOT call this method anywhere else but in the `valid_loop` method.
         Run a validation epoch.

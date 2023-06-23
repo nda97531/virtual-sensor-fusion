@@ -146,7 +146,7 @@ if __name__ == '__main__':
             callbacks=[
                 ModelCheckpoint(NUM_EPOCH, model_file_path),
                 EarlyStop(EARLY_STOP_PATIENCE),
-                ReduceLROnPlateau(optimizer=optimizer, mode='min', patience=LR_SCHEDULER_PATIENCE)
+                ReduceLROnPlateau(optimizer=optimizer, mode='min', patience=LR_SCHEDULER_PATIENCE, verbose=True)
             ]
         )
 

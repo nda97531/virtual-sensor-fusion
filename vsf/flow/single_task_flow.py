@@ -9,7 +9,7 @@ from vsf.flow.flow_functions import f1_score_from_prob
 
 
 class SingleTaskFlow(BaseFlow):
-    def _train_epoch(self, dataloader: DataLoader) -> None:
+    def _train_epoch(self, dataloader: DataLoader) -> dict:
         train_loss = 0
         y_true = []
         y_pred = []
@@ -35,10 +35,10 @@ class SingleTaskFlow(BaseFlow):
         # record epoch log
         train_loss /= len(dataloader)
         metric = f1_score_from_prob(tr.concatenate(y_true), tr.concatenate(y_pred))
-        self.train_log.append({'loss': train_loss, 'metric': metric})
-        print(f'Train: {self.train_log[-1]}')
+        training_log = {'loss': train_loss, 'metric': metric, 'lr': self.optimizer.param_groups[0]['lr']}
+        return training_log
 
-    def _valid_epoch(self, dataloader: DataLoader) -> None:
+    def _valid_epoch(self, dataloader: DataLoader) -> dict:
         num_batches = len(dataloader)
         valid_loss = 0
 
@@ -59,8 +59,8 @@ class SingleTaskFlow(BaseFlow):
         metric = f1_score_from_prob(y_true, y_pred)
 
         # record epoch log
-        self.valid_log.append({'loss': valid_loss, 'metric': metric})
-        print(f'Valid: {self.valid_log[-1]}')
+        valid_log = {'loss': valid_loss, 'metric': metric}
+        return valid_log
 
     def _test_epoch(self, dataloader: DataLoader, model: tr.nn.Module) -> pd.DataFrame:
         y_true = []
