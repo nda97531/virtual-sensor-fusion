@@ -9,6 +9,30 @@ from .conv import Conv1dBlock
 from .conv_attention import CBAM, SpatialGate, ChannelGate
 
 
+def flatten_by_gap(x):
+    """
+    Flatten a tensor by global pooling average over the last channel
+    Args:
+        x: tensor shape [batch size, channel, window length]
+
+    Returns:
+        tensor shape [batch size, channel]
+    """
+    return F.adaptive_avg_pool1d(x, 1).squeeze(-1)
+
+
+def take_last_time_step(x):
+    """
+    Flatten a tensor by taking only the last time step
+    Args:
+        x: tensor shape [batch size, channel, window length]
+
+    Returns:
+        tensor shape [batch size, channel]
+    """
+    return x[:, :, -1]
+
+
 class TCN(nn.Module):
     def __init__(self,
                  input_shape: tuple,
@@ -72,9 +96,11 @@ class TCN(nn.Module):
         self.feature_extractor = nn.Sequential(*layers)
 
         if how_flatten == "last time step":
-            self.flatten = lambda x: x[:, :, -1]
+            self.cbam = nn.Identity()
+            self.flatten = take_last_time_step
         elif how_flatten == "gap":
-            self.flatten = lambda x: F.adaptive_avg_pool1d(x, 1).squeeze(-1)
+            self.cbam = nn.Identity()
+            self.flatten = flatten_by_gap
         elif "attention gap" in how_flatten:
             if how_flatten == "channel attention gap":
                 self.cbam = CBAM(channel_gate=ChannelGate(
@@ -97,7 +123,7 @@ class TCN(nn.Module):
                         conv_norm=attention_conv_norm
                     )
                 )
-            self.flatten = lambda x: F.adaptive_avg_pool1d(self.cbam(x), 1).squeeze(-1)
+            self.flatten = flatten_by_gap
         else:
             raise ValueError("how_flatten must be 'last time step'/'gap'/'attention gap'/"
                              "'channel attention gap'/'spatial attention gap'")
