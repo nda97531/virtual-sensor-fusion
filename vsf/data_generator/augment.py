@@ -31,15 +31,17 @@ def format_range(x: any, start_0: bool) -> np.ndarray:
 
 
 class Augmenter:
-    def __init__(self, p: float):
+    def __init__(self, p: float, random_seed: int):
         """
         Abstract base class for augmenters
 
         Args:
             p: range (0, 1], possibility to apply this augmenter each time `run` is called
+            random_seed: random seed for this Augmenter; if None, no fixed seed is used
         """
         assert 0 < p <= 1
         self.p = p
+        self.randomizer = np.random.default_rng(seed=random_seed)
 
     def _apply_logic(self, org_data: np.ndarray) -> np.ndarray:
         """
@@ -74,7 +76,7 @@ class Augmenter:
         Returns:
             augmented data
         """
-        if (self.p >= 1) or (np.random.rand() < self.p):
+        if (self.p >= 1) or (self.randomizer.random() < self.p):
             data = self._copy_data(org_data)
             data = self._apply_logic(data)
             return data
@@ -83,16 +85,18 @@ class Augmenter:
 
 
 class ComposeAugmenters(Augmenter):
-    def __init__(self, augmenters: List[Augmenter], shuffle_augmenters: bool = True, p: float = 1):
+    def __init__(self, p: float, random_seed: int,
+                 augmenters: List[Augmenter], shuffle_augmenters: bool = True):
         """
         Combine many augmenters into a single one
 
         Args:
+            p: range (0, 1], possibility to apply this augmenter each time `run` is called
+            random_seed: random seed for this Augmenter
             augmenters: list of Augmenter objects
             shuffle_augmenters: whether to shuffle the order of augmenters when applying
-            p: range (0, 1], possibility to apply this augmenter each time `run` is called
         """
-        super().__init__(p)
+        super().__init__(p=p, random_seed=random_seed)
         self.augmenters = augmenters
         self.shuffle_augmenters = shuffle_augmenters if len(augmenters) > 1 else False
 
@@ -103,24 +107,25 @@ class ComposeAugmenters(Augmenter):
         return org_data
 
     def _apply_logic(self, org_data: np.ndarray) -> np.ndarray:
-        for i in np.random.permutation(range(len(self.augmenters))) if self.shuffle_augmenters \
+        for i in self.randomizer.permutation(range(len(self.augmenters))) if self.shuffle_augmenters \
                 else range(len(self.augmenters)):
             org_data = self.augmenters[i].run(org_data)
         return org_data
 
 
 class Rotation3D(Augmenter):
-    def __init__(self, angle_range: Union[list, tuple, float] = 180, p: float = 1) -> None:
+    def __init__(self, p: float, random_seed: int, angle_range: Union[list, tuple, float] = 180) -> None:
         """
         Rotate tri-axial data in a random axis.
 
         Args:
+            p: probability to apply this augmenter each time it is called
+            random_seed: random seed for this Augmenter
             angle_range: (degree) the angle is randomised within this range;
                 if this is a list, randomly pick an angle in this range;
                 if it's a float, the range is [-float, float]
-            p: probability to apply this augmenter each time it is called
         """
-        super().__init__(p=p)
+        super().__init__(p=p, random_seed=random_seed)
 
         self.angle_range = format_range(angle_range, start_0=False) / 180 * np.pi
 
@@ -128,8 +133,8 @@ class Rotation3D(Augmenter):
         assert (len(org_data.shape) == 2) and (org_data.shape[-1] % 3 == 0), \
             f"expected data shape: [any length, channel%3==0], got {org_data.shape}"
 
-        angle = np.random.uniform(low=self.angle_range[0], high=self.angle_range[1])
-        direction_vector = np.random.uniform(-1, 1, size=3)
+        angle = self.randomizer.uniform(low=self.angle_range[0], high=self.angle_range[1])
+        direction_vector = self.randomizer.uniform(-1, 1, size=3)
 
         # transpose data to shape [channel, time step]
         data = org_data.T
@@ -161,15 +166,17 @@ class Rotation3D(Augmenter):
 
 
 class TimeWarp(Augmenter):
-    def __init__(self, p: float, sigma: float = 0.2, knot_range: Union[int, list] = 4):
+    def __init__(self, p: float, random_seed: int, sigma: float = 0.2, knot_range: Union[int, list] = 4):
         """
+        Time warping augmentation
 
         Args:
-            p:
-            sigma:
-            knot_range:
+            p: probability to apply this augmenter each time it is called
+            random_seed: random seed for this Augmenter
+            sigma: warping magnitude (std)
+            knot_range: number of knot to generate a random curve to distort timestamps
         """
-        super().__init__(p)
+        super().__init__(p=p, random_seed=random_seed)
         self.sigma = sigma
         self.knot_range = format_range(knot_range, start_0=True)
         # add one here because upper bound is exclusive when randomising
@@ -185,8 +192,8 @@ class TimeWarp(Augmenter):
         Returns:
             numpy array shape [length, num_curves]
         """
-        knot = np.random.randint(self.knot_range[0], self.knot_range[1])
-        tt = gen_random_curves(length, num_curves, self.sigma, knot)
+        knot = self.randomizer.integers(self.knot_range[0], self.knot_range[1])
+        tt = gen_random_curves(length, num_curves, self.sigma, knot, self.randomizer)
         tt_cum = np.cumsum(tt, axis=0)
 
         # Make the last value equal length

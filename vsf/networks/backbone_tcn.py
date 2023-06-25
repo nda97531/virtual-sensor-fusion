@@ -101,28 +101,29 @@ class TCN(nn.Module):
         elif how_flatten == "gap":
             self.cbam = nn.Identity()
             self.flatten = flatten_by_gap
-        elif "attention gap" in how_flatten:
-            if how_flatten == "channel attention gap":
-                self.cbam = CBAM(channel_gate=ChannelGate(
+        elif how_flatten == "channel attention gap":
+            self.cbam = CBAM(channel_gate=ChannelGate(
+                gate_channels=n_tcn_channels[-1],
+                reduction_ratio=math.sqrt(n_tcn_channels[-1])
+            ))
+            self.flatten = flatten_by_gap
+        elif how_flatten == "spatial attention gap":
+            self.cbam = CBAM(spatial_gate=SpatialGate(
+                input_len=input_shape[0],
+                conv_norm=attention_conv_norm
+            ))
+            self.flatten = flatten_by_gap
+        elif how_flatten == "attention gap":
+            self.cbam = CBAM(
+                channel_gate=ChannelGate(
                     gate_channels=n_tcn_channels[-1],
                     reduction_ratio=math.sqrt(n_tcn_channels[-1])
-                ))
-            elif how_flatten == "spatial attention gap":
-                self.cbam = CBAM(spatial_gate=SpatialGate(
+                ),
+                spatial_gate=SpatialGate(
                     input_len=input_shape[0],
                     conv_norm=attention_conv_norm
-                ))
-            else:
-                self.cbam = CBAM(
-                    channel_gate=ChannelGate(
-                        gate_channels=n_tcn_channels[-1],
-                        reduction_ratio=math.sqrt(n_tcn_channels[-1])
-                    ),
-                    spatial_gate=SpatialGate(
-                        input_len=input_shape[0],
-                        conv_norm=attention_conv_norm
-                    )
                 )
+            )
             self.flatten = flatten_by_gap
         else:
             raise ValueError("how_flatten must be 'last time step'/'gap'/'attention gap'/"
@@ -141,6 +142,7 @@ class TCN(nn.Module):
         x = self.feature_extractor(x)
         # batch size, feature, time step
 
+        x = self.cbam(x)
         x = self.flatten(x)
         # batch size, feature
 

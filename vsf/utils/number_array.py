@@ -24,20 +24,24 @@ def np_mode(array: np.ndarray, exclude_nan: bool = True) -> any:
     return mode_
 
 
-def gen_random_curves(length: int, num_curves: int, sigma=0.2, knot=4):
+def gen_random_curves(length: int, num_curves: int, sigma=0.2, knot=4,
+                      randomizer: np.random._generator.Generator = None):
     """
+    Generate random curves
 
     Args:
-        length:
-        num_curves:
-        sigma:
-        knot:
+        length: length of the curve(s) to be generated
+        num_curves: number of curves to be generated
+        sigma: warping magnitude (std)
+        knot: number of turns in the curve(s)
+        randomizer: numpy random generator (with seed)
 
     Returns:
         array shape [length, num curves]
     """
     xx = np.arange(0, length, (length - 1) / (knot + 1))
-    yy = np.random.normal(loc=1.0, scale=sigma, size=(knot + 2, num_curves))
+    yy = np.random.normal(loc=1.0, scale=sigma, size=(knot + 2, num_curves)) if randomizer is None \
+        else randomizer.normal(loc=1.0, scale=sigma, size=(knot + 2, num_curves))
     x_range = np.arange(length)
     curves = np.array([CubicSpline(xx, yy[:, i])(x_range) for i in range(num_curves)]).T
     return curves
