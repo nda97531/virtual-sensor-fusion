@@ -1,7 +1,8 @@
+import itertools
 import os
+from collections import defaultdict
 from copy import deepcopy
 from glob import glob
-from typing import Tuple, Dict
 
 import numpy as np
 import torch as tr
@@ -20,7 +21,7 @@ from vsf.public_datasets.up_fall_dataset import UPFallNpyWindow, UPFallConst
 
 
 def load_data(parquet_dir: str, window_size_sec=4, step_size_sec=2, min_step_size_sec=0.5,
-              max_short_window=5) -> Tuple[Dict, ...]:
+              max_short_window=5) -> dict:
     """
     Load all the UP-Fall dataset into a dataframe
 
@@ -32,9 +33,8 @@ def load_data(parquet_dir: str, window_size_sec=4, step_size_sec=2, min_step_siz
         max_short_window: number of window for each session of short activities
 
     Returns:
-        a tuple of 3 dicts, each one:
-            - key: label (int)
-            - value: data array shape [n, ..., channel]
+        a 3-level dict:
+            dict[train/valid/test][submodal name][label index] = windows array shape [n, ..., channel]
     """
     upfall = UPFallNpyWindow(
         parquet_root_dir=parquet_dir,
@@ -49,6 +49,7 @@ def load_data(parquet_dir: str, window_size_sec=4, step_size_sec=2, min_step_siz
         }
     )
     df = upfall.run()
+    list_sub_modal = list(itertools.chain.from_iterable(list(sub_dict) for sub_dict in upfall.modal_cols.values()))
 
     # split TRAIN, VALID, TEST
     # 1/3 subjects as test set
@@ -71,17 +72,22 @@ def load_data(parquet_dir: str, window_size_sec=4, step_size_sec=2, min_step_siz
 
         # construct dict with classes are keys
         label_list = np.unique(modal_dict['label'])
-        class_dict = {}
+        # dict[modal][label index] = window array
+        class_dict = defaultdict(dict)
         for label_idx, label_val in enumerate(label_list):
             idx = modal_dict['label'] == label_val
-            class_dict[label_idx] = modal_dict['wrist_acc'][idx]
+            class_dict['wrist_acc'][label_idx] = modal_dict['wrist_acc'][idx]
+        class_dict = dict(class_dict)
 
+        assert list(class_dict.keys()) == list_sub_modal, 'Mismatched submodal list'
         return class_dict
 
-    test_set = concat_data_in_df(test_set)
-    valid_set = concat_data_in_df(valid_set)
-    train_set = concat_data_in_df(train_set)
-    return train_set, valid_set, test_set
+    results = {
+        'train': concat_data_in_df(train_set),
+        'valid': concat_data_in_df(valid_set),
+        'test': concat_data_in_df(test_set)
+    }
+    return results
 
 
 if __name__ == '__main__':
@@ -109,7 +115,11 @@ if __name__ == '__main__':
     TRAIN_BATCH_SIZE = 16
 
     # load data
-    train_dict, valid_dict, test_dict = load_data(parquet_dir=args.data_folder)
+    three_dicts = load_data(parquet_dir=args.data_folder)
+    train_dict = three_dicts['train']['wrist_acc']
+    valid_dict = three_dicts['valid']['wrist_acc']
+    test_dict = three_dicts['test']['wrist_acc']
+    del three_dicts
 
     test_scores = []
     model_paths = []
@@ -152,7 +162,7 @@ if __name__ == '__main__':
         )
 
         # train and valid
-        augmenter = Rotation3D(angle_range=180, p=1)
+        augmenter = Rotation3D(angle_range=180, p=1, random_seed=None)
         train_set = BalancedClassificationDataset(deepcopy(train_dict), augmenter=augmenter)
         valid_set = ClassificationDataset(deepcopy(valid_dict))
         train_loader = DataLoader(train_set, batch_size=TRAIN_BATCH_SIZE, shuffle=True)

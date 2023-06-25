@@ -103,7 +103,8 @@ class UPFallParquet(ParquetDatasetFormatter):
         """
         return 120 * x + 203 * y - 57449
 
-    def read_inertial_and_label(self, file_path: str) -> Tuple[pl.DataFrame, pl.DataFrame]:
+    @staticmethod
+    def read_inertial_and_label(file_path: str) -> Tuple[pl.DataFrame, pl.DataFrame]:
         """
         Read a sensor csv file, including both inertial data and label
 

@@ -31,7 +31,7 @@ def format_range(x: any, start_0: bool) -> np.ndarray:
 
 
 class Augmenter:
-    def __init__(self, p: float, random_seed: int):
+    def __init__(self, p: float, random_seed: Union[int, None]):
         """
         Abstract base class for augmenters
 
@@ -85,7 +85,7 @@ class Augmenter:
 
 
 class ComposeAugmenters(Augmenter):
-    def __init__(self, p: float, random_seed: int,
+    def __init__(self, p: float, random_seed: Union[int, None],
                  augmenters: List[Augmenter], shuffle_augmenters: bool = True):
         """
         Combine many augmenters into a single one
@@ -114,7 +114,7 @@ class ComposeAugmenters(Augmenter):
 
 
 class Rotation3D(Augmenter):
-    def __init__(self, p: float, random_seed: int, angle_range: Union[list, tuple, float] = 180) -> None:
+    def __init__(self, p: float, random_seed: Union[int, None], angle_range: Union[list, tuple, float] = 180) -> None:
         """
         Rotate tri-axial data in a random axis.
 
@@ -166,7 +166,7 @@ class Rotation3D(Augmenter):
 
 
 class TimeWarp(Augmenter):
-    def __init__(self, p: float, random_seed: int, sigma: float = 0.2, knot_range: Union[int, list] = 4):
+    def __init__(self, p: float, random_seed: Union[int, None], sigma: float = 0.2, knot_range: Union[int, list] = 4):
         """
         Time warping augmentation
 

@@ -124,6 +124,9 @@ class NpyWindowFormatter:
 
         self.modal_cols = modal_cols
 
+        # flag to control log printing column names
+        self.verbose = True
+
     def get_parquet_modals(self) -> list:
         """
         Get a list of parquet modal names
@@ -265,6 +268,11 @@ class NpyWindowFormatter:
                 # get specified cols
                 sub_modals_col_idx[k] = [df.columns.index(col) for col in v]
 
+        if self.verbose:
+            for sub_modal, sub_modal_col_idx in sub_modals_col_idx.items():
+                logger.info(f'Sub-modal: {sub_modal}; '
+                            f'{len(sub_modal_col_idx)} cols: {[df.columns[i] for i in sub_modal_col_idx]}')
+
         # split windows by sub-modal
         result = {sub_modal: windows[:, :, sub_modal_col_idx]
                   for sub_modal, sub_modal_col_idx in sub_modals_col_idx.items()}
@@ -326,6 +334,8 @@ class NpyWindowFormatter:
         # add label info
         session_result['label'] = modal_labels[0][:min_num_windows]
 
+        # only print column names for 1 session
+        self.verbose = False
         return session_result
 
     def run(self) -> pd.DataFrame:
