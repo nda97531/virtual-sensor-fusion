@@ -187,6 +187,7 @@ class UPFallParquet(ParquetDatasetFormatter):
         # fill low conf joints by interpolation
         skel_frames = skel_frames.interpolate()
         skel_frames = skel_frames.fillna(method='backfill')
+        assert not pd.isna(skel_frames.iloc[0, -len(norm_joint_cols):]).any(), 'Norm joints are nan!!'
 
         # get mid hip and neck joints to normalise skeleton session
         norm_joints = skel_frames.iloc[:, -len(norm_joint_cols):].to_numpy()
@@ -202,7 +203,8 @@ class UPFallParquet(ParquetDatasetFormatter):
             (pl.col(x_cols) - norm_start_point[:, 0]) / torso_length,
             (pl.col(y_cols) - norm_start_point[:, 1]) / torso_length
         )
-
+        # fill undetected joints
+        skel_frames = skel_frames.fill_null(0.)
         return skel_frames
 
     def skeletons_in_upper_left_corner(self, skeletons: np.ndarray) -> np.ndarray:
