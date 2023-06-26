@@ -53,7 +53,7 @@ class ParquetDatasetFormatter:
                                         session=session)
         return p
 
-    def write_output_parquet(self, data: pl.DataFrame, modal: str, subject: any, session: any) -> None:
+    def write_output_parquet(self, data: pl.DataFrame, modal: str, subject: any, session: any) -> bool:
         """
         Write a processed DataFrame
 
@@ -62,11 +62,21 @@ class ParquetDatasetFormatter:
             modal: modality name (e.g. accelerometer, skeleton, label)
             subject: subject name/ID
             session: session ID
+
+        Returns:
+            boolean, file written successfully or not
         """
         output_path = self.get_output_file_path(modal=modal, subject=subject, session=session)
+
+        # check if there's any NAN
+        if np.isnan(data.to_numpy()).sum():
+            logger.error(f'NAN in data!! Skipping this file: {output_path}')
+            return False
+
         os.makedirs(os.path.split(output_path)[0], exist_ok=True)
         data.write_parquet(output_path)
         logger.info(f'Parquet written: {output_path}')
+        return True
 
     def run(self):
         """

@@ -71,10 +71,6 @@ class UPFallConst:
     MODAL_INERTIA = 'inertia'
     MODAL_SKELETON = 'skeleton'
 
-    # columns used for skeleton normalisation
-    SKELETON_NECK_COLS = ["x_Neck", "y_Neck"]
-    SKELETON_HIP_COLS = ["x_MidHip", "y_MidHip"]
-
     SKELETON_PANDAS_TIME_FORMAT = '%Y-%m-%dT%H_%M_%S.%f'
     INERTIA_POLARS_TIME_FORMAT = '%Y-%m-%dT%H:%M:%S%.f'
     INERTIAL_POLARS_DTYPES = [pl.Utf8] + [pl.Float64] * 35 + [pl.Int64] * 11
@@ -181,27 +177,32 @@ class UPFallParquet(ParquetDatasetFormatter):
             for str_time in timestamps
         ]
         # only keep representative joints, but also include 2 joints for normalisation
-        norm_joint_cols = UPFallConst.SKELETON_NECK_COLS + UPFallConst.SKELETON_HIP_COLS
-        skel_frames = skel_frames[UPFallConst.SELECTED_SKELETON_COLS + norm_joint_cols]
+        skel_frames = skel_frames[UPFallConst.SELECTED_SKELETON_COLS]
 
         # fill low conf joints by interpolation
         skel_frames = skel_frames.interpolate()
         skel_frames = skel_frames.fillna(method='backfill')
-        assert not pd.isna(skel_frames.iloc[0, -len(norm_joint_cols):]).any(), 'Norm joints are nan!!'
 
-        # get mid hip and neck joints to normalise skeleton session
-        norm_joints = skel_frames.iloc[:, -len(norm_joint_cols):].to_numpy()
-        skel_frames = pl.from_pandas(skel_frames.iloc[:, :-len(norm_joint_cols)])
-        # mid hip is always at origin (0, 0)
-        norm_start_point = norm_joints[:, 2:]
-        # torso length is always 1 (choose torso because it doesn't depend on subject posture)
-        torso_length = np.sqrt(np.sum((norm_joints[:, :2] - norm_joints[:, 2:]) ** 2, axis=1)) + 1e-3
-        # normalise skeleton session
+        skel_frames = pl.from_pandas(skel_frames)
+        # centroid of all joints is always at origin (0, 0)
         x_cols = [c for c in skel_frames.columns if c.startswith('x_')]
         y_cols = [c for c in skel_frames.columns if c.startswith('y_')]
+        x_arr = skel_frames.select(x_cols).to_numpy()
+        y_arr = skel_frames.select(y_cols).to_numpy()
+        norm_start_point_x = np.nanmean(x_arr, axis=1)
+        norm_start_point_y = np.nanmean(y_arr, axis=1)
+
+        # skeleton size is always 1
+        upper_y = np.nanpercentile(y_arr, q=75, axis=1)
+        lower_y = np.nanpercentile(y_arr, q=25, axis=1)
+        upper_x = np.nanpercentile(x_arr, q=75, axis=1)
+        lower_x = np.nanpercentile(x_arr, q=25, axis=1)
+        skeleton_size = np.sqrt((upper_x - lower_x) ** 2 + (upper_y - lower_y) ** 2) + 1e-3
+
+        # normalise skeleton session
         skel_frames = skel_frames.with_columns(
-            (pl.col(x_cols) - norm_start_point[:, 0]) / torso_length,
-            (pl.col(y_cols) - norm_start_point[:, 1]) / torso_length
+            (pl.col(x_cols) - norm_start_point_x) / skeleton_size,
+            (pl.col(y_cols) - norm_start_point_y) / skeleton_size
         )
         # fill undetected joints
         skel_frames = skel_frames.with_columns(
@@ -286,7 +287,7 @@ class UPFallParquet(ParquetDatasetFormatter):
         return info
 
     def process_session(self, session_folder: str, session_info: str = None) \
-            -> Union[Tuple[pd.DataFrame, pd.DataFrame], None]:
+            -> Union[Tuple[pl.DataFrame, pl.DataFrame], None]:
         """
         Produce a fully processed dataframe for each modal in a session
 
@@ -330,8 +331,8 @@ class UPFallParquet(ParquetDatasetFormatter):
         session_folders = sorted(glob(f'{self.raw_folder}/Subject*/Activity*/Trial*'))
         logger.info(f'Found {len(session_folders)} sessions in total')
 
-        skip_session = 0
-        write_session = 0
+        skip_file = 0
+        write_file = 0
         # for each session
         for session_folder in session_folders:
             # get session info
@@ -341,7 +342,7 @@ class UPFallParquet(ParquetDatasetFormatter):
             if os.path.isfile(self.get_output_file_path(UPFallConst.MODAL_INERTIA, subject, session_info)) \
                     and os.path.isfile(self.get_output_file_path(UPFallConst.MODAL_SKELETON, subject, session_info)):
                 logger.info(f'Skipping session {session_info} because already run before')
-                skip_session += 1
+                skip_file += 2
                 continue
             logger.info(f'Starting session {session_info}')
 
@@ -349,15 +350,20 @@ class UPFallParquet(ParquetDatasetFormatter):
             data = self.process_session(session_folder, session_info)
             if data is None:
                 logger.info(f'Skipping session {session_info} because skeleton data not found')
-                skip_session += 1
+                skip_file += 2
                 continue
             inertial_df, skeleton_df = data
 
             # write files
-            self.write_output_parquet(inertial_df, UPFallConst.MODAL_INERTIA, subject, session_info)
-            self.write_output_parquet(skeleton_df, UPFallConst.MODAL_SKELETON, subject, session_info)
-            write_session += 1
-        logger.info(f'{write_session} session(s) processed, {skip_session} sessions skipped')
+            if self.write_output_parquet(inertial_df, UPFallConst.MODAL_INERTIA, subject, session_info):
+                write_file += 1
+            else:
+                skip_file += 1
+            if self.write_output_parquet(skeleton_df, UPFallConst.MODAL_SKELETON, subject, session_info):
+                write_file += 1
+            else:
+                skip_file += 1
+        logger.info(f'{write_file} file(s) written, {skip_file} file(s) skipped')
 
 
 class UPFallNpyWindow(NpyWindowFormatter):
@@ -396,7 +402,7 @@ if __name__ == '__main__':
     step_size_sec = 1.5
     min_step_size_sec = 0.5
 
-    upfall = UPFallParquet(
+    UPFallParquet(
         raw_folder='/mnt/data_drive/projects/raw datasets/UP-Fall',
         destination_folder=parquet_dir,
         sampling_rates={UPFallConst.MODAL_INERTIA: inertial_freq,
