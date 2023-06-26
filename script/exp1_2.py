@@ -53,10 +53,12 @@ def load_data(parquet_dir: str, window_size_sec=4, step_size_sec=2, min_step_siz
             UPFallConst.MODAL_INERTIA: {
                 'wrist_acc': ['wrist_acc_x(m/s^2)', 'wrist_acc_y(m/s^2)', 'wrist_acc_z(m/s^2)'],
             },
-            UPFallConst.MODAL_SKELETON: list(itertools.chain.from_iterable(
-                [f'x_{joint}', f'y_{joint}'] for joint in
-                ["Neck", "RElbow", "LElbow", "RWrist", "LWrist", "RKnee", "LKnee", "RAnkle", "LAnkle"]
-            ))  # exclude MidHip because it's always 0 after normalisation
+            UPFallConst.MODAL_SKELETON: {
+                'skeleton': list(itertools.chain.from_iterable(
+                    [f'x_{joint}', f'y_{joint}'] for joint in
+                    ["Neck", "RElbow", "LElbow", "RWrist", "LWrist", "RKnee", "LKnee", "RAnkle", "LAnkle"]
+                ))  # exclude MidHip because it's always 0 after normalisation
+            }
         }
     )
     df = upfall.run()
@@ -106,7 +108,7 @@ if __name__ == '__main__':
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--device', '-d', required=True)
+    parser.add_argument('--device', '-d', required=False, default='cpu')
 
     parser.add_argument('--name', '-n', default='exp1_2',
                         help='name of the experiment to create a folder to save weights')
@@ -149,7 +151,7 @@ if __name__ == '__main__':
                 attention_conv_norm='batch'
             ),
             'skeleton': TCN(
-                input_shape=(80, 20),
+                input_shape=(80, 18),
                 how_flatten='spatial attention gap',
                 n_tcn_channels=(64,) * 4 + (128,) * 2,
                 tcn_drop_rate=0.5,
@@ -160,7 +162,7 @@ if __name__ == '__main__':
         })
         classifier = BasicClassifier(
             n_features_in=256,
-            n_classes_out=len(train_dict)
+            n_classes_out=len(train_dict[list(train_dict.keys())[0]])
         )
         model = FusionModel(backbones=backbone, classifier=classifier, dropout=0.5)
 

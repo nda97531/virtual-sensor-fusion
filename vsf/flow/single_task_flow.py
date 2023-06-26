@@ -9,13 +9,22 @@ from vsf.flow.flow_functions import f1_score_from_prob
 
 
 class SingleTaskFlow(BaseFlow):
+    def x_to_device(self, x):
+        if isinstance(x, dict):
+            x = {k: v.to(self.device) for k, v in x.items()}
+        elif isinstance(x, tr.Tensor):
+            x = x.to(self.device)
+        else:
+            raise ValueError(f'Unsupported data type in flow: {type(x)}')
+        return x
+
     def _train_epoch(self, dataloader: DataLoader) -> dict:
         train_loss = 0
         y_true = []
         y_pred = []
 
         for batch, (x, y) in tqdm(enumerate(dataloader), total=len(dataloader), ncols=0):
-            x = x.to(self.device)
+            x = self.x_to_device(x)
             y = y.to(self.device)
 
             # Compute prediction and loss
@@ -46,7 +55,7 @@ class SingleTaskFlow(BaseFlow):
         y_pred = []
         # no need to call tr.no_grad() because the parent class handles it
         for x, y in dataloader:
-            x = x.to(self.device)
+            x = self.x_to_device(x)
             y = y.to(self.device)
             pred = self.model(x)
             valid_loss += self.loss_fn(pred, y).item()
@@ -67,7 +76,7 @@ class SingleTaskFlow(BaseFlow):
         y_pred = []
         # no need to call tr.no_grad() because the parent class handles it
         for x, y in dataloader:
-            x = x.to(self.device)
+            x = self.x_to_device(x)
             y = y.to(self.device)
             pred = model(x)
             y_true.append(y)

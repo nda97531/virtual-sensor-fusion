@@ -71,5 +71,5 @@ class FusionModel(nn.Module):
         # [batch, channel]
 
         x = self.dropout(x)
-        x = self.classifier(x, **classifier_kwargs)
+        x = self.classifiers(x, **classifier_kwargs)
         return x

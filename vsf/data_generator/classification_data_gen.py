@@ -36,9 +36,7 @@ class BasicDataset(Dataset):
         if augmenter is None:
             logger.info('No Augmenter provided')
 
-        logger.info('Label distribution:')
-        for k, v in label_data_dict.items():
-            logger.info(f'{k}: {len(v)}')
+        logger.info('Label distribution:\n' + '\n'.join(f'{k}: {len(v)}' for k, v in label_data_dict.items()))
 
         self.augmenter = augmenter
         self.float_precision = float_precision
@@ -81,6 +79,7 @@ class BalancedDataset(Dataset):
         check_label_key(label_data_dict)
         if augmenter is None:
             logger.info('No Augmenter provided')
+        logger.info('Label distribution:\n' + '\n'.join(f'{k}: {len(v)}' for k, v in label_data_dict.items()))
 
         self.shuffle = shuffle
         self.augmenter = augmenter
@@ -91,9 +90,7 @@ class BalancedDataset(Dataset):
         # key: label; value: index of the last called instance
         self.label_pick_idx = {}
 
-        logger.info('Label distribution:')
         for cls, arr in self.label_data_dict.items():
-            logger.info(f'{cls}: {len(arr)}')
             self.label_pick_idx[cls] = 0
 
         # calculate dataset size
@@ -138,9 +135,7 @@ class FusionDataset(Dataset):
         """
         self.validate_params(label_data_dict, augmenters)
 
-        logger.info('Label distribution:')
-        for k, v in label_data_dict[list(label_data_dict.keys())[0]].items():
-            logger.info(f'{k}: {len(v)}')
+        logger.info('Label distribution:\n' + '\n'.join(f'{k}: {len(v)}' for k, v in label_data_dict.items()))
 
         self.augmenters = augmenters
         self.float_precision = float_precision
@@ -176,9 +171,7 @@ class FusionDataset(Dataset):
                 count_check = modal_count
             else:
                 assert count_check == modal_count, 'All modals must have the same data and label'
-        logger.info('Label distribution:')
-        for k, v in count_check.items():
-            logger.info(f'{k}: {v}')
+        logger.info('Label distribution:\n' + '\n'.join(f'{k}: {len(v)}' for k, v in label_data_dict.items()))
 
     def __getitem__(self, index):
         # get data
@@ -212,6 +205,7 @@ class BalancedFusionDataset(Dataset):
             float_precision: convert data array into this data type, default is 'float32'
         """
         FusionDataset.validate_params(label_data_dict, augmenters)
+        logger.info('Label distribution:\n' + '\n'.join(f'{k}: {len(v)}' for k, v in label_data_dict.items()))
 
         self.augmenter = augmenters
         self.shuffle = shuffle
@@ -222,10 +216,8 @@ class BalancedFusionDataset(Dataset):
         # dict[label] = index of the last called instance (0 -> N-1)
         self.label_pick_idx = {}
 
-        logger.info('Label distribution:')
         self.first_modal = list(label_data_dict.keys())[0]
         for cls, arr in self.label_data_dict[self.first_modal].items():
-            logger.info(f'{cls}: {len(arr)}')
             self.label_pick_idx[cls] = 0
 
         # calculate dataset size
@@ -248,8 +240,9 @@ class BalancedFusionDataset(Dataset):
         if self.label_pick_idx[label] == len(self.label_data_dict[self.first_modal][label]):
             self.label_pick_idx[label] = 0
             self._shuffle_class_index(label)
-
-        return data.astype(self.float_precision), label
+        # convert dtype
+        data = {k: v.astype(self.float_precision) for k, v in data.items()}
+        return data, label
 
     def _shuffle_class_index(self, cls: int):
         if self.shuffle:
