@@ -204,7 +204,9 @@ class UPFallParquet(ParquetDatasetFormatter):
             (pl.col(y_cols) - norm_start_point[:, 1]) / torso_length
         )
         # fill undetected joints
-        skel_frames = skel_frames.fill_null(0.)
+        skel_frames = skel_frames.with_columns(
+            pl.exclude('timestamp(ms)').fill_null(0.)
+        )
         return skel_frames
 
     def skeletons_in_upper_left_corner(self, skeletons: np.ndarray) -> np.ndarray:
@@ -387,33 +389,33 @@ class UPFallNpyWindow(NpyWindowFormatter):
 
 
 if __name__ == '__main__':
-    parquet_dir = '/mnt/data_drive/projects/UCD04 - Virtual sensor fusion/processed_parquet/UP-Fall'
+    parquet_dir = '/mnt/data_drive/projects/UCD04 - Virtual sensor fusion/processed_parquet/UP-Fall_draft'
     inertial_freq = 50
     skeletal_freq = 20
     window_size_sec = 4
     step_size_sec = 1.5
     min_step_size_sec = 0.5
 
-    # upfall = UPFallParquet(
-    #     raw_folder='/mnt/data_drive/projects/raw datasets/UP-Fall',
-    #     destination_folder=parquet_dir,
-    #     sampling_rates={UPFallConst.MODAL_INERTIA: inertial_freq,
-    #                     UPFallConst.MODAL_SKELETON: skeletal_freq}
-    # )#.run()
-
-    upfall = UPFallNpyWindow(
-        parquet_root_dir=parquet_dir,
-        window_size_sec=window_size_sec,
-        step_size_sec=step_size_sec,
-        min_step_size_sec=min_step_size_sec,
-        max_short_window=3,
-        modal_cols={
-            UPFallConst.MODAL_INERTIA: {
-                'wrist_acc': ['wrist_acc_x(m/s^2)', 'wrist_acc_y(m/s^2)', 'wrist_acc_z(m/s^2)'],
-                'belt_acc': ['belt_acc_x(m/s^2)', 'belt_acc_y(m/s^2)', 'belt_acc_z(m/s^2)']
-            },
-            UPFallConst.MODAL_SKELETON: {
-                'skeleton': None
-            }
-        }
+    upfall = UPFallParquet(
+        raw_folder='/mnt/data_drive/projects/raw datasets/UP-Fall',
+        destination_folder=parquet_dir,
+        sampling_rates={UPFallConst.MODAL_INERTIA: inertial_freq,
+                        UPFallConst.MODAL_SKELETON: skeletal_freq}
     ).run()
+
+    # upfall = UPFallNpyWindow(
+    #     parquet_root_dir=parquet_dir,
+    #     window_size_sec=window_size_sec,
+    #     step_size_sec=step_size_sec,
+    #     min_step_size_sec=min_step_size_sec,
+    #     max_short_window=3,
+    #     modal_cols={
+    #         UPFallConst.MODAL_INERTIA: {
+    #             'wrist_acc': ['wrist_acc_x(m/s^2)', 'wrist_acc_y(m/s^2)', 'wrist_acc_z(m/s^2)'],
+    #             'belt_acc': ['belt_acc_x(m/s^2)', 'belt_acc_y(m/s^2)', 'belt_acc_z(m/s^2)']
+    #         },
+    #         UPFallConst.MODAL_SKELETON: {
+    #             'skeleton': None
+    #         }
+    #     }
+    # ).run()
