@@ -1,6 +1,7 @@
 from typing import Union, List
 
 import numpy as np
+from loguru import logger
 from transforms3d.axangles import axangle2mat
 
 from vsf.utils.number_array import gen_random_curves
@@ -31,7 +32,7 @@ def format_range(x: any, start_0: bool) -> np.ndarray:
 
 
 class Augmenter:
-    def __init__(self, p: float, random_seed: Union[int, None]):
+    def __init__(self, p: float = 1, random_seed: Union[int, None] = None):
         """
         Abstract base class for augmenters
 
@@ -39,7 +40,8 @@ class Augmenter:
             p: range (0, 1], possibility to apply this augmenter each time `run` is called
             random_seed: random seed for this Augmenter; if None, no fixed seed is used
         """
-        assert 0 < p <= 1
+        if p <= 0 or p > 1:
+            logger.info(f'Augment probability is not in [0,1): {p}')
         self.p = p
         self.randomizer = np.random.default_rng(seed=random_seed)
 
@@ -48,21 +50,16 @@ class Augmenter:
         Apply the augmentation
 
         Args:
-            org_data:
+            org_data: a single sample (without batch dim)
 
         Returns:
-
+            numpy array of the same shape
         """
         raise NotImplementedError()
 
     def _copy_data(self, org_data: np.ndarray) -> np.ndarray:
         """
         Return a copy of the original data array to avoid modifying the raw dataset.
-        Args:
-            org_data:
-
-        Returns:
-
         """
         return org_data.copy()
 
@@ -85,16 +82,16 @@ class Augmenter:
 
 
 class ComposeAugmenters(Augmenter):
-    def __init__(self, p: float, random_seed: Union[int, None],
-                 augmenters: List[Augmenter], shuffle_augmenters: bool = True):
+    def __init__(self, augmenters: List[Augmenter], shuffle_augmenters: bool = True,
+                 p: float = 1, random_seed: Union[int, None] = None):
         """
         Combine many augmenters into a single one
 
         Args:
-            p: range (0, 1], possibility to apply this augmenter each time `run` is called
-            random_seed: random seed for this Augmenter
             augmenters: list of Augmenter objects
             shuffle_augmenters: whether to shuffle the order of augmenters when applying
+            p: range (0, 1], possibility to apply this augmenter each time `run` is called
+            random_seed: random seed for this Augmenter
         """
         super().__init__(p=p, random_seed=random_seed)
         self.augmenters = augmenters
@@ -114,16 +111,17 @@ class ComposeAugmenters(Augmenter):
 
 
 class Rotation3D(Augmenter):
-    def __init__(self, p: float, random_seed: Union[int, None], angle_range: Union[list, tuple, float] = 180) -> None:
+    def __init__(self, angle_range: Union[list, tuple, float] = 180,
+                 p: float = 1, random_seed: Union[int, None] = None) -> None:
         """
-        Rotate tri-axial data in a random axis.
+        Rotate tri-axial data in a random axis. This is for tri-axial inertial data.
 
         Args:
-            p: probability to apply this augmenter each time it is called
-            random_seed: random seed for this Augmenter
             angle_range: (degree) the angle is randomised within this range;
                 if this is a list, randomly pick an angle in this range;
                 if it's a float, the range is [-float, float]
+            p: probability to apply this augmenter each time it is called
+            random_seed: random seed for this Augmenter
         """
         super().__init__(p=p, random_seed=random_seed)
 
@@ -165,16 +163,40 @@ class Rotation3D(Augmenter):
         return data
 
 
+class HorizontalFlip(Augmenter):
+    def __init__(self, p=0.5, random_seed: Union[int, None] = None):
+        """
+        Flip skeleton data horizontally by multiplying x-axis with -1.
+        Please make sure data is normalised (around 0).
+        """
+        assert p < 1, 'Do not always apply flip!'
+        super().__init__(p=p, random_seed=random_seed)
+
+    def _apply_logic(self, org_data: np.ndarray) -> np.ndarray:
+        """
+        Flip data horizontally (flip x-axis)
+
+        Args:
+            org_data: array shape [time step, num joints * 2(x,y)]
+
+        Returns:
+            same shape array
+        """
+        org_data[:, np.arange(0, org_data.shape[1], 2)] *= -1
+        return org_data
+
+
 class TimeWarp(Augmenter):
-    def __init__(self, p: float, random_seed: Union[int, None], sigma: float = 0.2, knot_range: Union[int, list] = 4):
+    def __init__(self, sigma: float = 0.2, knot_range: Union[int, list] = 4,
+                 p: float = 1, random_seed: Union[int, None] = None):
         """
         Time warping augmentation
 
         Args:
-            p: probability to apply this augmenter each time it is called
-            random_seed: random seed for this Augmenter
             sigma: warping magnitude (std)
             knot_range: number of knot to generate a random curve to distort timestamps
+            p: probability to apply this augmenter each time it is called
+            random_seed: random seed for this Augmenter
         """
         super().__init__(p=p, random_seed=random_seed)
         self.sigma = sigma

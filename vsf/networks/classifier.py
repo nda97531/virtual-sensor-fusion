@@ -4,7 +4,7 @@ import torch as tr
 import torch.nn as nn
 
 
-class FCClassifier(nn.Module):
+class BasicClassifier(nn.Module):
     def __init__(self, n_features_in: int, n_classes_out: int):
         """
         FC classifier for single task
@@ -21,10 +21,10 @@ class FCClassifier(nn.Module):
         return x
 
 
-class MultiFCClassifiers(nn.Module):
+class MaskedClassifiers(nn.Module):
     def __init__(self, n_features_in: int, n_classes_out: list):
         """
-        FC classifiers for multiple tasks
+        FC classifiers for multiple classification tasks
 
         Args:
             n_features_in: input dim
@@ -55,7 +55,7 @@ class MultiFCClassifiers(nn.Module):
 
 
 if __name__ == '__main__':
-    model = MultiFCClassifiers(n_features_in=10, n_classes_out=[2, 2])
+    model = MaskedClassifiers(n_features_in=10, n_classes_out=[2, 2])
     data = tr.ones([8, 10])
     mask = tr.Tensor([0, 1, 1, 1, 1, 1, 1, 1]).bool()
     output = model(data, mask)

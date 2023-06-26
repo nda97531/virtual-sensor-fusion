@@ -1,3 +1,9 @@
+"""
+Exp 1.1
+Single task: classification of all labels
+Single sensor: wrist accelerometer
+"""
+
 import itertools
 import os
 from collections import defaultdict
@@ -10,13 +16,13 @@ from loguru import logger
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
 
-from vsf.data_generator.augment import Rotation3D
-from vsf.data_generator.classification_data_gen import ClassificationDataset, BalancedClassificationDataset
+from vsf.data_generator.augmentation import Rotation3D
+from vsf.data_generator.classification_data_gen import BasicDataset, BalancedDataset
 from vsf.flow.single_task_flow import SingleTaskFlow
 from vsf.flow.torch_callbacks import ModelCheckpoint, EarlyStop
 from vsf.networks.backbone_tcn import TCN
-from vsf.networks.classifier import FCClassifier
-from vsf.networks.complete_model import CompleteModel
+from vsf.networks.classifier import BasicClassifier
+from vsf.networks.complete_model import BasicModel
 from vsf.public_datasets.up_fall_dataset import UPFallNpyWindow, UPFallConst
 
 
@@ -135,11 +141,11 @@ if __name__ == '__main__':
             conv_norm='batch',
             attention_conv_norm='batch'
         )
-        classifier = FCClassifier(
+        classifier = BasicClassifier(
             n_features_in=128,
             n_classes_out=len(train_dict)
         )
-        model = CompleteModel(backbone=backbone, classifier=classifier, dropout=0.5)
+        model = BasicModel(backbone=backbone, classifier=classifier, dropout=0.5)
 
         # create folder to save result
         save_folder = f'{args.output_folder}/{args.name}'
@@ -163,8 +169,8 @@ if __name__ == '__main__':
 
         # train and valid
         augmenter = Rotation3D(angle_range=180, p=1, random_seed=None)
-        train_set = BalancedClassificationDataset(deepcopy(train_dict), augmenter=augmenter)
-        valid_set = ClassificationDataset(deepcopy(valid_dict))
+        train_set = BalancedDataset(deepcopy(train_dict), augmenter=augmenter)
+        valid_set = BasicDataset(deepcopy(valid_dict))
         train_loader = DataLoader(train_set, batch_size=TRAIN_BATCH_SIZE, shuffle=True)
         valid_loader = DataLoader(valid_set, batch_size=64, shuffle=False)
         train_log, valid_log = flow.run(
@@ -174,7 +180,7 @@ if __name__ == '__main__':
         )
 
         # test
-        test_set = ClassificationDataset(deepcopy(test_dict))
+        test_set = BasicDataset(deepcopy(test_dict))
         test_loader = DataLoader(test_set, batch_size=64, shuffle=False)
         test_score = flow.run_test_epoch(test_loader, model_state_dict=tr.load(model_file_path))
         test_scores.append(test_score)

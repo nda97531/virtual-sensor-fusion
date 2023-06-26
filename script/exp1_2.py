@@ -1,23 +1,29 @@
+"""
+Exp 1.2
+Single task: classification of all labels
+Sensor fusion: wrist accelerometer + skeleton
+"""
+
 import itertools
 import os
 from collections import defaultdict
 from copy import deepcopy
 from glob import glob
-from typing import Tuple, Dict
 
 import numpy as np
 import torch as tr
 from loguru import logger
+from torch import nn
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
 
-from vsf.data_generator.augment import Rotation3D
-from vsf.data_generator.classification_data_gen import ClassificationDataset, BalancedClassificationDataset
+from vsf.data_generator.augmentation import Rotation3D, HorizontalFlip
+from vsf.data_generator.classification_data_gen import FusionDataset, BalancedFusionDataset
 from vsf.flow.single_task_flow import SingleTaskFlow
 from vsf.flow.torch_callbacks import ModelCheckpoint, EarlyStop
 from vsf.networks.backbone_tcn import TCN
-from vsf.networks.classifier import FCClassifier
-from vsf.networks.complete_model import CompleteModel
+from vsf.networks.classifier import BasicClassifier
+from vsf.networks.complete_model import FusionModel
 from vsf.public_datasets.up_fall_dataset import UPFallNpyWindow, UPFallConst
 
 
@@ -47,7 +53,10 @@ def load_data(parquet_dir: str, window_size_sec=4, step_size_sec=2, min_step_siz
             UPFallConst.MODAL_INERTIA: {
                 'wrist_acc': ['wrist_acc_x(m/s^2)', 'wrist_acc_y(m/s^2)', 'wrist_acc_z(m/s^2)'],
             },
-            UPFallConst.MODAL_SKELETON: None  # None = all columns
+            UPFallConst.MODAL_SKELETON: list(itertools.chain.from_iterable(
+                [f'x_{joint}', f'y_{joint}'] for joint in
+                ["Neck", "RElbow", "LElbow", "RWrist", "LWrist", "RKnee", "LKnee", "RAnkle", "LAnkle"]
+            ))  # exclude MidHip because it's always 0 after normalisation
         }
     )
     df = upfall.run()
@@ -99,7 +108,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--device', '-d', required=True)
 
-    parser.add_argument('--name', '-n', default='exp1_1',
+    parser.add_argument('--name', '-n', default='exp1_2',
                         help='name of the experiment to create a folder to save weights')
 
     parser.add_argument('--data-folder', '-data',
@@ -117,74 +126,92 @@ if __name__ == '__main__':
     LR_SCHEDULER_PATIENCE = 15
     TRAIN_BATCH_SIZE = 16
 
-    # # load data
-    # train_dict, valid_dict, test_dict = load_data(parquet_dir=args.data_folder)
-    #
-    # test_scores = []
-    # model_paths = []
-    # # train 3 times
-    # for _ in range(NUM_REPEAT):
-    #     # create model
-    #     backbone = TCN(
-    #         input_shape=(200, 3),
-    #         how_flatten='spatial attention gap',
-    #         n_tcn_channels=(64,) * 5 + (128,) * 2,
-    #         tcn_drop_rate=0.5,
-    #         use_spatial_dropout=False,
-    #         conv_norm='batch',
-    #         attention_conv_norm='batch'
-    #     )
-    #     classifier = FCClassifier(
-    #         n_features_in=128,
-    #         n_classes_out=len(train_dict)
-    #     )
-    #     model = CompleteModel(backbone=backbone, classifier=classifier, dropout=0.5)
-    #
-    #     # create folder to save result
-    #     save_folder = f'{args.output_folder}/{args.name}'
-    #     last_run = [int(exp_no.split(os.sep)[-1].split('_')[-1]) for exp_no in glob(f'{save_folder}/run_*')]
-    #     last_run = max(last_run) + 1 if len(last_run) > 0 else 0
-    #     save_folder = f'{save_folder}/run_{last_run}'
-    #
-    #     # create training config
-    #     loss_fn = 'classification_auto'
-    #     optimizer = tr.optim.SGD(model.parameters(), lr=LEARNING_RATE)
-    #     model_file_path = f'{save_folder}/single_task.pth'
-    #     flow = SingleTaskFlow(
-    #         model=model, loss_fn=loss_fn, optimizer=optimizer,
-    #         device=args.device,
-    #         callbacks=[
-    #             ModelCheckpoint(NUM_EPOCH, model_file_path),
-    #             EarlyStop(EARLY_STOP_PATIENCE),
-    #             ReduceLROnPlateau(optimizer=optimizer, mode='min', patience=LR_SCHEDULER_PATIENCE, verbose=True)
-    #         ]
-    #     )
-    #
-    #     # train and valid
-    #     augmenter = Rotation3D(angle_range=180, p=1)
-    #     train_set = BalancedClassificationDataset(deepcopy(train_dict), augmenter=augmenter)
-    #     valid_set = ClassificationDataset(deepcopy(valid_dict))
-    #     train_loader = DataLoader(train_set, batch_size=TRAIN_BATCH_SIZE, shuffle=True)
-    #     valid_loader = DataLoader(valid_set, batch_size=64, shuffle=False)
-    #     train_log, valid_log = flow.run(
-    #         train_loader=train_loader,
-    #         valid_loader=valid_loader,
-    #         num_epochs=NUM_EPOCH
-    #     )
-    #
-    #     # test
-    #     test_set = ClassificationDataset(deepcopy(test_dict))
-    #     test_loader = DataLoader(test_set, batch_size=64, shuffle=False)
-    #     test_score = flow.run_test_epoch(test_loader, model_state_dict=tr.load(model_file_path))
-    #     test_scores.append(test_score)
-    #     model_paths.append(model_file_path)
-    #
-    #     # save log
-    #     train_log.to_csv(f'{save_folder}/train.csv', index=False)
-    #     valid_log.to_csv(f'{save_folder}/valid.csv', index=False)
-    #     test_score.to_csv(f'{save_folder}/test.csv', index=True)
-    #     logger.info("Done!")
-    #
-    # print(f'Mean test score of {NUM_REPEAT} runs:')
-    # print(*model_paths, sep='\n')
-    # print(sum(test_scores) / len(test_scores))
+    # load data
+    three_dicts = load_data(parquet_dir=args.data_folder)
+    train_dict = three_dicts['train']
+    valid_dict = three_dicts['valid']
+    test_dict = three_dicts['test']
+    del three_dicts
+
+    test_scores = []
+    model_paths = []
+    # train 3 times
+    for _ in range(NUM_REPEAT):
+        # create model
+        backbone = nn.ModuleDict({
+            'wrist_acc': TCN(
+                input_shape=(200, 3),
+                how_flatten='spatial attention gap',
+                n_tcn_channels=(64,) * 5 + (128,) * 2,
+                tcn_drop_rate=0.5,
+                use_spatial_dropout=False,
+                conv_norm='batch',
+                attention_conv_norm='batch'
+            ),
+            'skeleton': TCN(
+                input_shape=(80, 20),
+                how_flatten='spatial attention gap',
+                n_tcn_channels=(64,) * 4 + (128,) * 2,
+                tcn_drop_rate=0.5,
+                use_spatial_dropout=False,
+                conv_norm='batch',
+                attention_conv_norm='batch'
+            )
+        })
+        classifier = BasicClassifier(
+            n_features_in=256,
+            n_classes_out=len(train_dict)
+        )
+        model = FusionModel(backbones=backbone, classifier=classifier, dropout=0.5)
+
+        # create folder to save result
+        save_folder = f'{args.output_folder}/{args.name}'
+        last_run = [int(exp_no.split(os.sep)[-1].split('_')[-1]) for exp_no in glob(f'{save_folder}/run_*')]
+        last_run = max(last_run) + 1 if len(last_run) > 0 else 0
+        save_folder = f'{save_folder}/run_{last_run}'
+
+        # create training config
+        loss_fn = 'classification_auto'
+        optimizer = tr.optim.SGD(model.parameters(), lr=LEARNING_RATE)
+        model_file_path = f'{save_folder}/model.pth'
+        flow = SingleTaskFlow(
+            model=model, loss_fn=loss_fn, optimizer=optimizer,
+            device=args.device,
+            callbacks=[
+                ModelCheckpoint(NUM_EPOCH, model_file_path),
+                EarlyStop(EARLY_STOP_PATIENCE),
+                ReduceLROnPlateau(optimizer=optimizer, mode='min', patience=LR_SCHEDULER_PATIENCE, verbose=True)
+            ]
+        )
+
+        # train and valid
+        augmenter = {
+            'wrist_acc': Rotation3D(p=1, random_seed=None, angle_range=180),
+            'skeleton': HorizontalFlip(p=0.5, random_seed=None)
+        }
+        train_set = BalancedFusionDataset(deepcopy(train_dict), augmenters=augmenter)
+        valid_set = FusionDataset(deepcopy(valid_dict))
+        train_loader = DataLoader(train_set, batch_size=TRAIN_BATCH_SIZE, shuffle=True)
+        valid_loader = DataLoader(valid_set, batch_size=64, shuffle=False)
+        train_log, valid_log = flow.run(
+            train_loader=train_loader,
+            valid_loader=valid_loader,
+            num_epochs=NUM_EPOCH
+        )
+
+        # test
+        test_set = FusionDataset(deepcopy(test_dict))
+        test_loader = DataLoader(test_set, batch_size=64, shuffle=False)
+        test_score = flow.run_test_epoch(test_loader, model_state_dict=tr.load(model_file_path))
+        test_scores.append(test_score)
+        model_paths.append(model_file_path)
+
+        # save log
+        train_log.to_csv(f'{save_folder}/train.csv', index=False)
+        valid_log.to_csv(f'{save_folder}/valid.csv', index=False)
+        test_score.to_csv(f'{save_folder}/test.csv', index=True)
+        logger.info("Done!")
+
+    print(f'Mean test score of {NUM_REPEAT} runs:')
+    print(*model_paths, sep='\n')
+    print(sum(test_scores) / len(test_scores))
