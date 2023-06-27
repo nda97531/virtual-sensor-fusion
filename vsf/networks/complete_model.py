@@ -79,6 +79,7 @@ class FusionModel(nn.Module):
             )
             for modal, arr in x_dict.items()
         ], dim=1)
+        x = nn.functional.relu(x)
         # [batch, channel]
 
         x = self.dropout(x)
