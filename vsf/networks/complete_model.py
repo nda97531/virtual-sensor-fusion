@@ -65,8 +65,8 @@ class FusionModel(nn.Module):
             output tensor
         """
         x = tr.cat([
-            self.backbones[key](tr.permute(x_dict[key], [0, 2, 1]), **backbone_kwargs)
-            for key in x_dict.keys()
+            self.backbones[modal](tr.permute(arr, [0, 2, 1]), **backbone_kwargs)
+            for modal, arr in x_dict.items()
         ], dim=1)
         # [batch, channel]
 

@@ -139,7 +139,7 @@ if __name__ == '__main__':
             tcn_drop_rate=0.5,
             use_spatial_dropout=False,
             conv_norm='batch',
-            attention_conv_norm='batch'
+            attention_conv_norm=''
         )
         classifier = BasicClassifier(
             n_features_in=128,

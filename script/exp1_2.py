@@ -56,8 +56,8 @@ def load_data(parquet_dir: str, window_size_sec=4, step_size_sec=2, min_step_siz
             UPFallConst.MODAL_SKELETON: {
                 'skeleton': list(itertools.chain.from_iterable(
                     [f'x_{joint}', f'y_{joint}'] for joint in
-                    ["Neck", "RElbow", "LElbow", "RWrist", "LWrist", "RKnee", "LKnee", "RAnkle", "LAnkle"]
-                ))  # exclude MidHip because it's always 0 after normalisation
+                    ['Neck', 'RElbow', 'LElbow', 'RWrist', 'LWrist', 'MidHip', 'RKnee', 'LKnee', 'RAnkle', 'LAnkle']
+                ))
             }
         }
     )
@@ -108,7 +108,7 @@ if __name__ == '__main__':
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--device', '-d', required=False, default='cpu')
+    parser.add_argument('--device', '-d', required=True)
 
     parser.add_argument('--name', '-n', default='exp1_2',
                         help='name of the experiment to create a folder to save weights')
@@ -148,16 +148,16 @@ if __name__ == '__main__':
                 tcn_drop_rate=0.5,
                 use_spatial_dropout=False,
                 conv_norm='batch',
-                attention_conv_norm='batch'
+                attention_conv_norm=''
             ),
             'skeleton': TCN(
-                input_shape=(80, 18),
+                input_shape=(80, 20),
                 how_flatten='spatial attention gap',
                 n_tcn_channels=(64,) * 4 + (128,) * 2,
                 tcn_drop_rate=0.5,
                 use_spatial_dropout=False,
                 conv_norm='batch',
-                attention_conv_norm='batch'
+                attention_conv_norm=''
             )
         })
         classifier = BasicClassifier(
