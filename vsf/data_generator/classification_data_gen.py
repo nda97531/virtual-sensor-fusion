@@ -135,8 +135,6 @@ class FusionDataset(Dataset):
         """
         self.validate_params(label_data_dict, augmenters)
 
-        logger.info('Label distribution:\n' + '\n'.join(f'{k}: {len(v)}' for k, v in label_data_dict.items()))
-
         self.augmenters = augmenters
         self.float_precision = float_precision
 
@@ -171,7 +169,10 @@ class FusionDataset(Dataset):
                 count_check = modal_count
             else:
                 assert count_check == modal_count, 'All modals must have the same data and label'
-        logger.info('Label distribution:\n' + '\n'.join(f'{k}: {len(v)}' for k, v in label_data_dict.items()))
+
+        first_modal = list(label_data_dict.keys())[0]
+        logger.info('Label distribution:\n' +
+                    '\n'.join(f'{k}: {len(v)}' for k, v in label_data_dict[first_modal].items()))
 
     def __getitem__(self, index):
         # get data
@@ -205,9 +206,8 @@ class BalancedFusionDataset(Dataset):
             float_precision: convert data array into this data type, default is 'float32'
         """
         FusionDataset.validate_params(label_data_dict, augmenters)
-        logger.info('Label distribution:\n' + '\n'.join(f'{k}: {len(v)}' for k, v in label_data_dict.items()))
 
-        self.augmenter = augmenters
+        self.augmenters = augmenters
         self.shuffle = shuffle
         self.float_precision = float_precision
 
@@ -227,13 +227,13 @@ class BalancedFusionDataset(Dataset):
     def __getitem__(self, index):
         # get label and data
         label = int(index // self.mean_class_len)
-        data = {modal: self.label_data_dict[modal][label][self.label_pick_idx[label]]
-                for modal in self.label_data_dict.keys()}
+        data = {modal: modal_data[label][self.label_pick_idx[label]]
+                for modal, modal_data in self.label_data_dict.items()}
         # augment
-        if self.augmenter is not None:
+        if self.augmenters is not None:
             for modal, window in data.items():
-                if self.augmenter[modal] is not None:
-                    data[modal] = self.augmenter[modal].run(window)
+                if self.augmenters[modal] is not None:
+                    data[modal] = self.augmenters[modal].run(window)
         # update class pick index
         self.label_pick_idx[label] += 1
         # if reach epoch end of this class
