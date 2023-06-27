@@ -145,7 +145,7 @@ class NpyWindowFormatter:
             list of strings
         """
         # scan for modal list first
-        modal_folders = glob(MODAL_PATH_PATTERN.format(root=self.parquet_root_dir, modal='*'))
+        modal_folders = sorted(glob(MODAL_PATH_PATTERN.format(root=self.parquet_root_dir, modal='*')))
         modals = [p.removesuffix('/').split('/')[-1] for p in modal_folders]
         return modals
 

@@ -74,10 +74,10 @@ class FusionModel(nn.Module):
         x = tr.cat([
             self.connect_fc[modal](
                 self.backbones[modal](
-                    tr.permute(arr, [0, 2, 1]), **backbone_kwargs
+                    tr.permute(x_dict[modal], [0, 2, 1]), **backbone_kwargs
                 )
             )
-            for modal, arr in x_dict.items()
+            for modal in self.backbones.keys()
         ], dim=1)
         x = nn.functional.relu(x)
         # [batch, channel]
