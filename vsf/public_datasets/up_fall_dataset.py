@@ -67,6 +67,9 @@ class UPFallConst:
         ["Neck", "RElbow", "LElbow", "RWrist", "LWrist", "MidHip", "RKnee", "LKnee", "RAnkle", "LAnkle"]
     ))
 
+    # columns used for skeleton normalisation
+    SKELETON_HIP_COLS = ["x_MidHip", "y_MidHip"]
+
     # modal names
     MODAL_INERTIA = 'inertia'
     MODAL_SKELETON = 'skeleton'
@@ -130,12 +133,14 @@ class UPFallParquet(ParquetDatasetFormatter):
 
         return data_df, label_df
 
-    def read_skeleton(self, folder_path: str) -> Union[pl.DataFrame, None]:
+    def read_skeleton(self, folder_path: str, norm: bool = True) -> Union[pl.DataFrame, None]:
         """
         Read skeleton data of only the main subject (person) from all frames in a session
 
         Args:
             folder_path: path to a session folder containing all skeleton json files
+            norm: whether to normalise skeleton
+                (False only for visualisation, otherwise always True, no need to optimise)
 
         Returns:
             a polars dataframe, each row is a frame
@@ -177,33 +182,34 @@ class UPFallParquet(ParquetDatasetFormatter):
             for str_time in timestamps
         ]
         # only keep representative joints, but also include 2 joints for normalisation
-        skel_frames = skel_frames[UPFallConst.SELECTED_SKELETON_COLS]
+        skel_frames = skel_frames[UPFallConst.SELECTED_SKELETON_COLS + UPFallConst.SKELETON_HIP_COLS]
 
         # fill low conf joints by interpolation
         skel_frames = skel_frames.interpolate()
         skel_frames = skel_frames.fillna(method='backfill')
 
-        skel_frames = pl.from_pandas(skel_frames)
-        # centroid of all joints is always at origin (0, 0)
-        x_cols = [c for c in skel_frames.columns if c.startswith('x_')]
-        y_cols = [c for c in skel_frames.columns if c.startswith('y_')]
-        x_arr = skel_frames.select(x_cols).to_numpy()
-        y_arr = skel_frames.select(y_cols).to_numpy()
-        norm_start_point_x = np.nanmean(x_arr, axis=1)
-        norm_start_point_y = np.nanmean(y_arr, axis=1)
+        # mid hip is always at origin (0, 0)
+        assert not pd.isna(skel_frames.iloc[0, -len(UPFallConst.SKELETON_HIP_COLS):]).any(), 'Norm joints are nan!!'
+        norm_midhip_point = skel_frames.iloc[:, -len(UPFallConst.SKELETON_HIP_COLS):].to_numpy()
 
-        # skeleton size is always 1
-        upper_y = np.nanpercentile(y_arr, q=75, axis=1)
-        lower_y = np.nanpercentile(y_arr, q=25, axis=1)
-        upper_x = np.nanpercentile(x_arr, q=75, axis=1)
-        lower_x = np.nanpercentile(x_arr, q=25, axis=1)
-        skeleton_size = np.sqrt((upper_x - lower_x) ** 2 + (upper_y - lower_y) ** 2) + 1e-3
+        skel_frames = pl.from_pandas(skel_frames.iloc[:, :-len(UPFallConst.SKELETON_HIP_COLS)])
+        if norm:
+            # skeleton size is always 1
+            x_cols = [c for c in skel_frames.columns if c.startswith('x_')]
+            y_cols = [c for c in skel_frames.columns if c.startswith('y_')]
+            x_arr = skel_frames.select(x_cols).to_numpy()
+            y_arr = skel_frames.select(y_cols).to_numpy()
+            upper_y = np.nanpercentile(y_arr, q=75, axis=1)
+            lower_y = np.nanpercentile(y_arr, q=25, axis=1)
+            upper_x = np.nanpercentile(x_arr, q=75, axis=1)
+            lower_x = np.nanpercentile(x_arr, q=25, axis=1)
+            skeleton_size = np.sqrt((upper_x - lower_x) ** 2 + (upper_y - lower_y) ** 2) + 1e-3
 
-        # normalise skeleton session
-        skel_frames = skel_frames.with_columns(
-            (pl.col(x_cols) - norm_start_point_x) / skeleton_size,
-            (pl.col(y_cols) - norm_start_point_y) / skeleton_size
-        )
+            # normalise skeleton session
+            skel_frames = skel_frames.with_columns(
+                (pl.col(x_cols) - norm_midhip_point[:, 0]) / skeleton_size,
+                (pl.col(y_cols) - norm_midhip_point[:, 1]) / skeleton_size
+            )
         # fill undetected joints
         skel_frames = skel_frames.with_columns(
             pl.exclude('timestamp(ms)').fill_null(0.)

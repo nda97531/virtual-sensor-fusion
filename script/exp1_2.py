@@ -56,7 +56,7 @@ def load_data(parquet_dir: str, window_size_sec=4, step_size_sec=2, min_step_siz
             UPFallConst.MODAL_SKELETON: {
                 'skeleton': list(itertools.chain.from_iterable(
                     [f'x_{joint}', f'y_{joint}'] for joint in
-                    ['Neck', 'RElbow', 'LElbow', 'RWrist', 'LWrist', 'MidHip', 'RKnee', 'LKnee', 'RAnkle', 'LAnkle']
+                    ['Neck', 'RElbow', 'LElbow', 'RWrist', 'LWrist', 'RKnee', 'LKnee', 'RAnkle', 'LAnkle']
                 ))
             }
         }
@@ -151,7 +151,7 @@ if __name__ == '__main__':
                 attention_conv_norm=''
             ),
             'skeleton': TCN(
-                input_shape=(80, 20),
+                input_shape=(80, 18),
                 how_flatten='spatial attention gap',
                 n_tcn_channels=(64,) * 4 + (128,) * 2,
                 tcn_drop_rate=0.5,
