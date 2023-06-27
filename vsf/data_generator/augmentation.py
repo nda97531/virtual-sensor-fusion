@@ -111,7 +111,7 @@ class ComposeAugmenters(Augmenter):
 
 
 class Rotation3D(Augmenter):
-    def __init__(self, angle_range: Union[list, tuple, float] = 180,
+    def __init__(self, angle_range: Union[list, tuple, float] = 180, separate_triaxial: bool = False,
                  p: float = 1, random_seed: Union[int, None] = None) -> None:
         """
         Rotate tri-axial data in a random axis. This is for tri-axial inertial data.
@@ -120,26 +120,41 @@ class Rotation3D(Augmenter):
             angle_range: (degree) the angle is randomised within this range;
                 if this is a list, randomly pick an angle in this range;
                 if it's a float, the range is [-float, float]
+            separate_triaxial: if True, use different random angles for each of the tri-axial sensor. For example, array
+                shape [n, 6] is 2 tri-axial sensors, each has 3 features.
             p: probability to apply this augmenter each time it is called
             random_seed: random seed for this Augmenter
         """
         super().__init__(p=p, random_seed=random_seed)
 
         self.angle_range = format_range(angle_range, start_0=False) / 180 * np.pi
+        self.separate_triaxial = separate_triaxial
 
     def _apply_logic(self, org_data: np.ndarray) -> np.ndarray:
-        assert (len(org_data.shape) == 2) and (org_data.shape[-1] % 3 == 0), \
+        assert (len(org_data.shape) == 2) and (org_data.shape[1] % 3 == 0), \
             f"expected data shape: [any length, channel%3==0], got {org_data.shape}"
 
-        angle = self.randomizer.uniform(low=self.angle_range[0], high=self.angle_range[1])
-        direction_vector = self.randomizer.uniform(-1, 1, size=3)
+        if self.separate_triaxial:
+            num_tri = org_data.shape[1] // 3
+            angles = self.randomizer.uniform(low=self.angle_range[0], high=self.angle_range[1], size=num_tri)
+            direction_vectors = self.randomizer.uniform(-1, 1, size=[num_tri, 3])
 
-        # transpose data to shape [channel, time step]
-        data = org_data.T
+            # transpose data to shape [channel, time step]
+            data = org_data.T
 
-        # for every 3 channels
-        for i in range(0, data.shape[-2], 3):
-            data[i:i + 3] = self.rotate(data[i:i + 3], angle, direction_vector)
+            # for every 3 channels
+            for i in range(0, data.shape[0], 3):
+                data[i:i + 3] = self.rotate(data[i:i + 3], angles[i], direction_vectors[i])
+        else:
+            angle = self.randomizer.uniform(low=self.angle_range[0], high=self.angle_range[1])
+            direction_vector = self.randomizer.uniform(-1, 1, size=3)
+
+            # transpose data to shape [channel, time step]
+            data = org_data.T
+
+            # for every 3 channels
+            for i in range(0, data.shape[0], 3):
+                data[i:i + 3] = self.rotate(data[i:i + 3], angle, direction_vector)
 
         # transpose back to [time step, channel]
         data = data.T

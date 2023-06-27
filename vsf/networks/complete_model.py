@@ -40,19 +40,26 @@ class BasicModel(nn.Module):
 
 
 class FusionModel(nn.Module):
-    def __init__(self, backbones: nn.ModuleDict, classifier: nn.Module, dropout: float = 0.5) -> None:
+    def __init__(self, backbones: nn.ModuleDict, backbone_output_dims: dict, classifier: nn.Module,
+                 dropout: float = 0.5) -> None:
         """
         A feature-level fusion model that concatenates features of backbones before the classifier
 
         Args:
             backbones: a module dict of backbone models
             classifier: classifier model
+            backbone_output_dims: output channel dim of each backbone, this dict has the same keys as `backbones`
             dropout: dropout rate between backbone and classifier
         """
         super().__init__()
         self.backbones = backbones
         self.classifiers = classifier
         self.dropout = nn.Dropout(p=dropout)
+        self.connect_fc = nn.ModuleDict({
+            modal: nn.Linear(backbone_output_dims[modal], backbone_output_dims[modal])
+            if backbone_output_dims[modal] else nn.Identity()
+            for modal in backbones.keys()
+        })
 
     def forward(self, x_dict: Dict[str, tr.Tensor], backbone_kwargs: dict = {}, classifier_kwargs: dict = {}):
         """
@@ -65,7 +72,11 @@ class FusionModel(nn.Module):
             output tensor
         """
         x = tr.cat([
-            self.backbones[modal](tr.permute(arr, [0, 2, 1]), **backbone_kwargs)
+            self.connect_fc[modal](
+                self.backbones[modal](
+                    tr.permute(arr, [0, 2, 1]), **backbone_kwargs
+                )
+            )
             for modal, arr in x_dict.items()
         ], dim=1)
         # [batch, channel]

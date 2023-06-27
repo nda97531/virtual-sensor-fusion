@@ -52,6 +52,7 @@ def load_data(parquet_dir: str, window_size_sec=4, step_size_sec=2, min_step_siz
         modal_cols={
             UPFallConst.MODAL_INERTIA: {
                 'wrist_acc': ['wrist_acc_x(m/s^2)', 'wrist_acc_y(m/s^2)', 'wrist_acc_z(m/s^2)'],
+                'belt_acc': ['belt_acc_x(m/s^2)', 'belt_acc_y(m/s^2)', 'belt_acc_z(m/s^2)'],
             },
             UPFallConst.MODAL_SKELETON: {
                 'skeleton': list(itertools.chain.from_iterable(
@@ -90,6 +91,7 @@ def load_data(parquet_dir: str, window_size_sec=4, step_size_sec=2, min_step_siz
         for label_idx, label_val in enumerate(label_list):
             idx = modal_dict['label'] == label_val
             class_dict['wrist_acc'][label_idx] = modal_dict['wrist_acc'][idx]
+            class_dict['belt_acc'][label_idx] = modal_dict['belt_acc'][idx]
             class_dict['skeleton'][label_idx] = modal_dict['skeleton'][idx]
         class_dict = dict(class_dict)
 
@@ -110,7 +112,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--device', '-d', required=True)
 
-    parser.add_argument('--name', '-n', default='exp1_2',
+    parser.add_argument('--name', '-n', default='exp1_3',
                         help='name of the experiment to create a folder to save weights')
 
     parser.add_argument('--data-folder', '-data',
@@ -148,8 +150,15 @@ if __name__ == '__main__':
                 tcn_drop_rate=0.5,
                 use_spatial_dropout=False,
                 conv_norm='batch',
-                attention_conv_norm=''
-            ),
+                attention_conv_norm=''),
+            'belt_acc': TCN(
+                input_shape=(200, 3),
+                how_flatten='spatial attention gap',
+                n_tcn_channels=(64,) * 5 + (128,) * 2,
+                tcn_drop_rate=0.5,
+                use_spatial_dropout=False,
+                conv_norm='batch',
+                attention_conv_norm=''),
             'skeleton': TCN(
                 input_shape=(80, 18),
                 how_flatten='spatial attention gap',
@@ -157,11 +166,10 @@ if __name__ == '__main__':
                 tcn_drop_rate=0.5,
                 use_spatial_dropout=False,
                 conv_norm='layer',
-                attention_conv_norm=''
-            )
+                attention_conv_norm='')
         })
         classifier = BasicClassifier(
-            n_features_in=256,
+            n_features_in=384,
             n_classes_out=len(train_dict[list(train_dict.keys())[0]])
         )
         model = FusionModel(backbones=backbone,
@@ -192,6 +200,7 @@ if __name__ == '__main__':
         # train and valid
         augmenter = {
             'wrist_acc': Rotation3D(angle_range=180, p=1, random_seed=None),
+            'belt_acc': Rotation3D(angle_range=180, p=1, random_seed=None),
             'skeleton': HorizontalFlip(p=0.5, random_seed=None)
         }
         train_set = BalancedFusionDataset(deepcopy(train_dict), augmenters=augmenter)
