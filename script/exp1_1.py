@@ -116,6 +116,7 @@ if __name__ == '__main__':
     NUM_REPEAT = 3
     NUM_EPOCH = 300
     LEARNING_RATE = 1e-2
+    WEIGHT_DECAY = 1e-3
     EARLY_STOP_PATIENCE = 30
     LR_SCHEDULER_PATIENCE = 15
     TRAIN_BATCH_SIZE = 16
@@ -155,7 +156,7 @@ if __name__ == '__main__':
 
         # create training config
         loss_fn = 'classification_auto'
-        optimizer = tr.optim.SGD(model.parameters(), lr=LEARNING_RATE)
+        optimizer = tr.optim.SGD(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY, momentum=0.9)
         model_file_path = f'{save_folder}/single_task.pth'
         flow = SingleTaskFlow(
             model=model, loss_fn=loss_fn, optimizer=optimizer,
