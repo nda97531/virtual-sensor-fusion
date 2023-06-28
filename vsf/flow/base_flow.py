@@ -37,6 +37,40 @@ class BaseFlow(ABC):
 
         self.callbacks = callbacks
 
+    def run_callbacks(self, epoch: int) -> List[CallbackAction]:
+        """
+        Run all callback functions
+
+        Args:
+            epoch: epoch index
+
+        Returns:
+
+        """
+        actions = []
+
+        for callback in self.callbacks:
+            if isinstance(callback, TorchCallback):
+                actions.append(
+                    callback.on_epoch_end(epoch, self.model, self.train_log[-1]['loss'], self.valid_log[-1]['loss'])
+                )
+            elif isinstance(callback, ReduceLROnPlateau):
+                callback.step(self.valid_log[-1]['loss'] if callback.mode == 'min'
+                              else self.valid_log[-1]['metric'])
+            else:
+                raise ValueError(f'Unsupported callback: {type(callback)}')
+
+        return actions
+
+    def tensor_to_device(self, x):
+        if isinstance(x, dict):
+            x = {k: v.to(self.device) for k, v in x.items()}
+        elif isinstance(x, tr.Tensor):
+            x = x.to(self.device)
+        else:
+            raise ValueError(f'Unsupported data type in flow: {type(x)}')
+        return x
+
     def train_epoch(self, dataloader: Union[DataLoader, Dict[str, DataLoader]]) -> None:
         """
         Run a training epoch. This function ensures that the model is switched to training mode
@@ -84,31 +118,6 @@ class BaseFlow(ABC):
             dataloader: DataLoader object or a list of objects
         """
         raise NotImplementedError
-
-    def run_callbacks(self, epoch: int) -> List[CallbackAction]:
-        """
-        Run all callback functions
-
-        Args:
-            epoch: epoch index
-
-        Returns:
-
-        """
-        actions = []
-
-        for callback in self.callbacks:
-            if isinstance(callback, TorchCallback):
-                actions.append(
-                    callback.on_epoch_end(epoch, self.model, self.train_log[-1]['loss'], self.valid_log[-1]['loss'])
-                )
-            elif isinstance(callback, ReduceLROnPlateau):
-                callback.step(self.valid_log[-1]['loss'] if callback.mode == 'min'
-                              else self.valid_log[-1]['metric'])
-            else:
-                raise ValueError(f'Unsupported callback: {type(callback)}')
-
-        return actions
 
     def _test_epoch(self, dataloader: Union[DataLoader, Dict[str, DataLoader]], model: tr.nn.Module) -> any:
         """
