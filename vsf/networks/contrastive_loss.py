@@ -1,11 +1,16 @@
 import torch as tr
 
 
-def cocoa2_loss(features_dict: dict, temp: float):
+def cocoa2_loss(features_dict: dict, temp: float = 0.1, scale_loss: float = 1 / 32, lambda_: float = 3.9e-3):
     """
-    Calculate contrastive loss from
+    Calculate contrastive loss from features of multiple modals.
+    Source: https://github.com/cruiseresearchgroup/COCOA/blob/main/src/losses.py
+
     Args:
         features_dict: dict[modal name] = Tensor shape [batch, feature]
+        temp: temperature param
+        scale_loss: weight of positive distance
+        lambda_: weight of negative distance
 
     Returns:
         a pytorch float, contrastive loss between modalities
@@ -14,63 +19,45 @@ def cocoa2_loss(features_dict: dict, temp: float):
     all_features = tr.stack([modal_tensor for modal_tensor in features_dict.values()])
     num_modal, batch_size, n_channel = all_features.shape
 
-    # positive pairs
-    sim = tr.matmul(all_features.permute([1, 0, 2]), all_features.permute([1, 2, 0]))
-    sim = 1 - sim
-    sim = tr.exp(sim / temp)
+    # # positive pairs
+    # # [batch size, modal, modal]
+    pos_error = tr.matmul(all_features.permute([1, 0, 2]), all_features.permute([1, 2, 0]))
+    pos_error = 1 - pos_error
+    pos_error = tr.exp(pos_error / temp)
     # [batch size,]; each is sum of distances between all possible pair of modals in a batch index
-    pos_error = tr.mean(sim, dim=(1, 2))
+    pos_error = tr.mean(pos_error, dim=(1, 2)).sum()
 
-    # negative pairs
-    neg_error = 0
-    for i in range(num_modal):
-        sim = tr.matmul(all_features[i], all_features[i].permute([1, 0]))
-        sim = tr.exp(sim / temp)
-        tri_mask = tr.full([batch_size, batch_size], fill_value=True)
-        tri_mask[tr.arange(batch_size), tr.arange(batch_size)] = False
-        off_diag_sim = tf.reshape(tf.boolean_mask(sim, tri_mask), [batch_size, batch_size - 1])
-        neg_error += (tf.reduce_mean(off_diag_sim, axis=-1))
+    # # negative pairs
+    # [modal, batch, batch]
+    neg_error = tr.matmul(all_features, all_features.permute([0, 2, 1]))
+    neg_error = tr.exp(neg_error / temp)
+    tri_mask = tr.full_like(neg_error, fill_value=True, dtype=bool)
+    tri_mask[:, tr.arange(batch_size), tr.arange(batch_size)] = False
+    neg_error = neg_error[tri_mask].reshape([-1, batch_size, batch_size - 1])
+    neg_error = neg_error.mean(dim=-1).sum()
+
+    loss = pos_error * scale_loss + neg_error * lambda_
+    return loss
 
 
-def loss(ytrue, ypred):
-    # ypred [modal, batch, channel]
-    batch_size, dim_size = ypred.shape[1], ypred.shape[0]
-    # Positive Pairs
-    pos_error = []
-    for i in range(batch_size):
-        sim = tf.linalg.matmul(ypred[:, i, :], ypred[:, i, :], transpose_b=True)
-        sim = tf.subtract(tf.ones([dim_size, dim_size], dtype=tf.dtypes.float32), sim)
-        sim = tf.exp(sim / self.temperature)
-        pos_error.append(tf.reduce_mean(sim))
-    # Negative pairs
-    neg_error = 0
-    for i in range(dim_size):
-        sim = tf.cast(tf.linalg.matmul(ypred[i], ypred[i], transpose_b=True), dtype=tf.dtypes.float32)
-        sim = tf.exp(sim / self.temperature)
-        tri_mask = np.ones(batch_size ** 2, dtype=np.bool).reshape(batch_size, batch_size)
-        tri_mask[np.diag_indices(batch_size)] = False
-        off_diag_sim = tf.reshape(tf.boolean_mask(sim, tri_mask), [batch_size, batch_size - 1])
-        neg_error += (tf.reduce_mean(off_diag_sim, axis=-1))
-
-    error = tf.multiply(tf.reduce_sum(pos_error), self.scale_loss) + self.lambd * tf.reduce_sum(neg_error)
-
-    return error
+def cocoa_loss():
+    # https://github.com/cruiseresearchgroup/COCOA/blob/main/src/losses.py
+    pass
 
 
 if __name__ == '__main__':
     features = {
-        'acc': tr.rand([4, 15]),
-        'gyro': tr.rand([4, 15]),
-        'skeleton': tr.rand([4, 15]),
+        'acc': tr.rand([8, 15]),
+        'gyro': tr.rand([8, 15]),
+        'skeleton': tr.rand([8, 15]),
     }
     cocoa2_loss(features, temp=1)
 
-
-    def num_dist(a, b):
-        num = a * (a - 1) / 2
-        m_dist = b ** 2 - b
-        return num * m_dist
-
-
-    print(num_dist(3, 4))
-    print(num_dist(4, 3))
+    # def num_dist(a, b):
+    #     num = a * (a - 1) / 2
+    #     m_dist = b ** 2 - b
+    #     return num * m_dist
+    #
+    #
+    # print(num_dist(3, 4))
+    # print(num_dist(4, 3))
