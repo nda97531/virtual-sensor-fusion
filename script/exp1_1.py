@@ -22,7 +22,7 @@ from vsf.flow.single_task_flow import SingleTaskFlow
 from vsf.flow.torch_callbacks import ModelCheckpoint, EarlyStop
 from vsf.networks.backbone_tcn import TCN
 from vsf.networks.classifier import BasicClassifier
-from vsf.networks.complete_model import BasicModel
+from vsf.networks.complete_model import BasicClsModel
 from vsf.public_datasets.up_fall_dataset import UPFallNpyWindow, UPFallConst
 
 
@@ -146,7 +146,7 @@ if __name__ == '__main__':
             n_features_in=128,
             n_classes_out=len(train_dict)
         )
-        model = BasicModel(backbone=backbone, classifier=classifier, dropout=0.5)
+        model = BasicClsModel(backbone=backbone, classifier=classifier, dropout=0.5)
 
         # create folder to save result
         save_folder = f'{args.output_folder}/{args.name}'

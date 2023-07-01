@@ -1,6 +1,6 @@
 """
 Exp 1.2
-Single task: classification of all labels
+Single task: classification of all labels + VSF contrastive
 Sensor fusion: wrist accelerometer + skeleton
 """
 
@@ -19,12 +19,14 @@ from torch.utils.data import DataLoader
 
 from vsf.data_generator.augmentation import Rotation3D, HorizontalFlip
 from vsf.data_generator.classification_data_gen import FusionDataset, BalancedFusionDataset
-from vsf.flow.single_task_flow import SingleTaskFlow
+
 from vsf.flow.torch_callbacks import ModelCheckpoint, EarlyStop
+from vsf.flow.vsf_flow import VSFFlow
 from vsf.networks.backbone_tcn import TCN
-from vsf.networks.classifier import BasicClassifier
-from vsf.networks.complete_model import FusionModel
+from vsf.networks.complete_model import VSFModel
+from vsf.networks.vsf_distributor import OneSetDistributor
 from vsf.public_datasets.up_fall_dataset import UPFallNpyWindow, UPFallConst
+from vsf.networks.contrastive_loss import CMCLoss, CocoaLoss, Cocoa2Loss
 
 
 def load_data(parquet_dir: str, window_size_sec=4, step_size_sec=2, min_step_size_sec=0.5,
@@ -110,7 +112,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--device', '-d', required=True)
 
-    parser.add_argument('--name', '-n', default='exp1_2',
+    parser.add_argument('--name', '-n', default='exp1_4',
                         help='name of the experiment to create a folder to save weights')
 
     parser.add_argument('--data-folder', '-data',
@@ -161,14 +163,20 @@ if __name__ == '__main__':
                 attention_conv_norm=''
             )
         })
-        classifier = BasicClassifier(
-            n_features_in=256,
-            n_classes_out=len(train_dict[list(train_dict.keys())[0]])
+        head = OneSetDistributor(
+            input_dims={modal: 128 for modal in backbone.keys()},
+            contrast_feature_dim=128,
+            num_classes={
+                'wrist_acc': len(train_dict[list(train_dict.keys())[0]]),
+                # 'skeleton': len(train_dict[list(train_dict.keys())[0]])
+            },
+            contrastive_loss_func=CocoaLoss(temp=1)
         )
-        model = FusionModel(backbones=backbone,
-                            backbone_output_dims={k: 128 for k in backbone.keys()},
-                            classifier=classifier,
-                            dropout=0.5)
+        model = VSFModel(
+            backbones=backbone,
+            distributor_head=head,
+            dropout=0.5
+        )
 
         # create folder to save result
         save_folder = f'{args.output_folder}/{args.name}'
@@ -180,7 +188,7 @@ if __name__ == '__main__':
         loss_fn = 'classification_auto'
         optimizer = tr.optim.SGD(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY, momentum=0.9)
         model_file_path = f'{save_folder}/model.pth'
-        flow = SingleTaskFlow(
+        flow = VSFFlow(
             model=model, loss_fn=loss_fn, optimizer=optimizer,
             device=args.device,
             callbacks=[

@@ -8,9 +8,10 @@ from vsf.flow.base_flow import BaseFlow
 from vsf.flow.flow_functions import f1_score_from_prob
 
 
-class SingleTaskFlow(BaseFlow):
+class VSFFlow(BaseFlow):
     def _train_epoch(self, dataloader: DataLoader) -> dict:
-        train_loss = 0
+        train_cls_loss = 0
+        train_contrast_loss = 0
         y_true = []
         y_pred = []
 
@@ -18,9 +19,12 @@ class SingleTaskFlow(BaseFlow):
             x = self.tensor_to_device(x)
             y = y.to(self.device)
 
-            # Compute prediction and loss
-            pred = self.model(x)
-            loss = self.loss_fn(pred, y)
+            # Compute prediction and losses
+            pred, contrast_loss = self.model(x)
+            cls_loss = self.loss_fn(pred, y)
+
+            # add all losses together
+            loss = cls_loss + contrast_loss
 
             # Backpropagation
             self.optimizer.zero_grad()
@@ -28,19 +32,25 @@ class SingleTaskFlow(BaseFlow):
             self.optimizer.step()
 
             # record batch log
-            train_loss += loss.item()
+            train_cls_loss += cls_loss.item()
+            train_contrast_loss += contrast_loss.item()
             y_true.append(y.to('cpu'))
             y_pred.append(pred.to('cpu'))
 
         # record epoch log
-        train_loss /= len(dataloader)
+        train_cls_loss /= len(dataloader)
+        train_contrast_loss /= len(dataloader)
         metric = f1_score_from_prob(tr.concatenate(y_true), tr.concatenate(y_pred))
-        training_log = {'loss': train_loss, 'metric': metric, 'lr': self.optimizer.param_groups[0]['lr']}
+
+        training_log = {'loss': train_cls_loss + train_contrast_loss,
+                        'cls loss': train_cls_loss, 'contrastive loss': train_contrast_loss,
+                        'metric': metric, 'lr': self.optimizer.param_groups[0]['lr']}
         return training_log
 
     def _valid_epoch(self, dataloader: DataLoader) -> dict:
         num_batches = len(dataloader)
-        valid_loss = 0
+        valid_cls_loss = 0
+        valid_contrast_loss = 0
 
         y_true = []
         y_pred = []
@@ -48,18 +58,24 @@ class SingleTaskFlow(BaseFlow):
         for x, y in dataloader:
             x = self.tensor_to_device(x)
             y = y.to(self.device)
-            pred = self.model(x)
-            valid_loss += self.loss_fn(pred, y).item()
+            pred, contrast_loss = self.model(x)
+            cls_loss = self.loss_fn(pred, y)
+
+            valid_cls_loss += cls_loss.item()
+            valid_contrast_loss += contrast_loss.item()
             y_true.append(y)
             y_pred.append(pred)
 
-        valid_loss /= num_batches
+        valid_cls_loss /= num_batches
+        valid_contrast_loss /= num_batches
         y_true = tr.concatenate(y_true).to('cpu')
         y_pred = tr.concatenate(y_pred).to('cpu')
         metric = f1_score_from_prob(y_true, y_pred)
 
         # record epoch log
-        valid_log = {'loss': valid_loss, 'metric': metric}
+        valid_log = {'loss': valid_cls_loss + valid_contrast_loss,
+                     'cls loss': valid_cls_loss, 'contrastive loss': valid_contrast_loss,
+                     'metric': metric}
         return valid_log
 
     def _test_epoch(self, dataloader: DataLoader, model: tr.nn.Module) -> pd.DataFrame:
@@ -69,7 +85,7 @@ class SingleTaskFlow(BaseFlow):
         for x, y in dataloader:
             x = self.tensor_to_device(x)
             y = y.to(self.device)
-            pred = model(x)
+            pred, contrast_loss = model(x)
             y_true.append(y)
             y_pred.append(pred)
 
@@ -81,7 +97,7 @@ class SingleTaskFlow(BaseFlow):
 
 
 if __name__ == '__main__':
-    flow = SingleTaskFlow(
+    flow = VSFFlow(
         model=None,
         optimizer=None,
         device='cuda:0',

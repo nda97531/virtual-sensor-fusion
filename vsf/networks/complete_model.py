@@ -4,10 +4,10 @@ import torch as tr
 import torch.nn as nn
 
 
-class BasicModel(nn.Module):
+class BasicClsModel(nn.Module):
     def __init__(self, backbone: nn.Module, classifier: nn.Module, dropout: float = 0.5) -> None:
         """
-        Combine a backbone and a classifier
+        Basic classification model with a backbone and a classifier
 
         Args:
             backbone: backbone model
@@ -39,7 +39,7 @@ class BasicModel(nn.Module):
         return x
 
 
-class FusionModel(nn.Module):
+class FusionClsModel(nn.Module):
     def __init__(self, backbones: nn.ModuleDict, backbone_output_dims: dict, classifier: nn.Module,
                  dropout: float = 0.5) -> None:
         """
@@ -85,3 +85,43 @@ class FusionModel(nn.Module):
         x = self.dropout(x)
         x = self.classifiers(x, **classifier_kwargs)
         return x
+
+
+class VSFModel(nn.Module):
+    def __init__(self, backbones: nn.ModuleDict, distributor_head: nn.Module,
+                 dropout: float = 0.5) -> None:
+        """
+        A feature-level fusion model that concatenates features of backbones before the classifier
+
+        Args:
+            backbones: a module dict of backbone models
+            distributor_head: model head
+            dropout: dropout rate between backbone and classifier
+        """
+        super().__init__()
+        self.backbones = backbones
+        self.distributor = distributor_head
+        self.dropout = nn.Dropout(p=dropout)
+
+    def forward(self, x_dict: Dict[str, tr.Tensor], backbone_kwargs: dict = {}, head_kwargs: dict = {}):
+        """
+        Args:
+            x_dict: dict[input stream name] = tensor shape [batch, length, channel]
+            backbone_kwargs: kwargs for backbone model
+            head_kwargs: kwargs for head model
+
+        Returns:
+            a tuple of 2 elements:
+                - a dict: dict[modal name] = predicted class probabilities tensor shape [batch, num class]
+                - contrastive loss (pytorch float)
+        """
+        x_dict = {
+            modal: self.dropout(
+                self.backbones[modal](tr.permute(x_dict[modal], [0, 2, 1]), **backbone_kwargs)
+            )
+            for modal in self.backbones.keys()
+        }
+        # dict[modal] = [batch, channel]
+
+        class_probs, contrast_loss = self.distributor(x_dict, **head_kwargs)
+        return class_probs, contrast_loss
