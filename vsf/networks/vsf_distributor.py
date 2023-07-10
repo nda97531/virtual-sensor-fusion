@@ -48,11 +48,11 @@ class OneSetDistributor(nn.Module):
 
         Returns:
             a tuple of 2 elements:
-                - a dict: dict[modal name] = predicted class probabilities tensor shape [batch, num class]
+                - a dict: dict[modal name] = predicted class logits tensor shape [batch, num class]
                 - contrastive loss (pytorch float; None if `cal_loss` == False)
         """
         # classification
-        class_probs = {
+        class_logits = {
             modal: self.classifiers[modal](x_dict[modal])
             for modal in self.classifiers.keys()
         }
@@ -68,4 +68,4 @@ class OneSetDistributor(nn.Module):
             contrast_loss = None
 
         # [batch, channel]
-        return class_probs, contrast_loss
+        return class_logits, contrast_loss

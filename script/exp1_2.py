@@ -157,7 +157,7 @@ if __name__ == '__main__':
                 n_tcn_channels=(64,) * 4 + (128,) * 2,
                 tcn_drop_rate=0.5,
                 use_spatial_dropout=False,
-                conv_norm='layer',
+                conv_norm='batch',
                 attention_conv_norm=''
             )
         })
