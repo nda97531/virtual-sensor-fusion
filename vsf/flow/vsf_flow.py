@@ -1,3 +1,4 @@
+from collections import defaultdict
 import pandas as pd
 import torch as tr
 from sklearn import metrics
@@ -13,15 +14,15 @@ class VSFFlow(BaseFlow):
         train_cls_loss = 0
         train_contrast_loss = 0
         y_true = []
-        y_pred = []
+        y_preds = defaultdict(list)
 
         for batch, (x, y) in tqdm(enumerate(dataloader), total=len(dataloader), ncols=0):
             x = self.tensor_to_device(x)
             y = y.to(self.device)
 
             # Compute prediction and losses
-            pred, contrast_loss = self.model(x)
-            cls_loss = self.loss_fn(pred, y)
+            class_logits_dict, contrast_loss = self.model(x)
+            cls_loss = sum(self.loss_fn(class_logits, y) for class_logits in class_logits_dict.values())
 
             # add all losses together
             loss = cls_loss + contrast_loss
@@ -34,65 +35,80 @@ class VSFFlow(BaseFlow):
             # record batch log
             train_cls_loss += cls_loss.item()
             train_contrast_loss += contrast_loss.item()
-            y_true.append(y.to('cpu'))
-            y_pred.append(pred.to('cpu'))
+            y_true.append(y)
+            for modal, class_logits in class_logits_dict.items():
+                y_preds[modal].append(class_logits)
 
         # record epoch log
         train_cls_loss /= len(dataloader)
         train_contrast_loss /= len(dataloader)
-        metric = f1_score_from_prob(tr.concatenate(y_true), tr.concatenate(y_pred))
+        y_true = tr.concatenate(y_true).to('cpu')
+        scores = {
+            f'metric_{modal}': f1_score_from_prob(y_true, tr.concatenate(y_preds[modal]).to('cpu'))
+            for modal in y_preds.keys()
+        }
 
         training_log = {'loss': train_cls_loss + train_contrast_loss,
-                        'cls loss': train_cls_loss, 'contrastive loss': train_contrast_loss,
-                        'metric': metric, 'lr': self.optimizer.param_groups[0]['lr']}
+                        'cls loss': train_cls_loss, 'contrastive loss': train_contrast_loss}
+        training_log.update(scores)
+        training_log['lr'] = self.optimizer.param_groups[0]['lr']
         return training_log
 
     def _valid_epoch(self, dataloader: DataLoader) -> dict:
-        num_batches = len(dataloader)
         valid_cls_loss = 0
         valid_contrast_loss = 0
 
         y_true = []
-        y_pred = []
+        y_preds = defaultdict(list)
         # no need to call tr.no_grad() because the parent class handles it
         for x, y in dataloader:
             x = self.tensor_to_device(x)
             y = y.to(self.device)
-            pred, contrast_loss = self.model(x)
-            cls_loss = self.loss_fn(pred, y)
+            class_logits_dict, contrast_loss = self.model(x)
+            cls_loss = sum(self.loss_fn(class_logits, y) for class_logits in class_logits_dict.values())
 
             valid_cls_loss += cls_loss.item()
             valid_contrast_loss += contrast_loss.item()
             y_true.append(y)
-            y_pred.append(pred)
-
-        valid_cls_loss /= num_batches
-        valid_contrast_loss /= num_batches
-        y_true = tr.concatenate(y_true).to('cpu')
-        y_pred = tr.concatenate(y_pred).to('cpu')
-        metric = f1_score_from_prob(y_true, y_pred)
+            for modal, class_logits in class_logits_dict.items():
+                y_preds[modal].append(class_logits)
 
         # record epoch log
+        valid_cls_loss /= len(dataloader)
+        valid_contrast_loss /= len(dataloader)
+        y_true = tr.concatenate(y_true).to('cpu')
+        scores = {
+            f'metric_{modal}': f1_score_from_prob(y_true, tr.concatenate(y_preds[modal]).to('cpu'))
+            for modal in y_preds.keys()
+        }
+
         valid_log = {'loss': valid_cls_loss + valid_contrast_loss,
-                     'cls loss': valid_cls_loss, 'contrastive loss': valid_contrast_loss,
-                     'metric': metric}
+                     'cls loss': valid_cls_loss, 'contrastive loss': valid_contrast_loss}
+        valid_log.update(scores)
         return valid_log
 
     def _test_epoch(self, dataloader: DataLoader, model: tr.nn.Module) -> pd.DataFrame:
         y_true = []
-        y_pred = []
+        y_preds = defaultdict(list)
         # no need to call tr.no_grad() because the parent class handles it
         for x, y in dataloader:
             x = self.tensor_to_device(x)
             y = y.to(self.device)
-            pred, contrast_loss = model(x)
+            class_logits_dict, contrast_loss = model(x)
             y_true.append(y)
-            y_pred.append(pred)
+            for modal, class_logits in class_logits_dict.items():
+                y_preds[modal].append(class_logits)
 
         y_true = tr.concatenate(y_true).to('cpu')
-        y_pred = tr.concatenate(y_pred).to('cpu').argmax(axis=-1)
-        report = metrics.classification_report(y_true, y_pred, digits=4, output_dict=True)
-        report = pd.DataFrame(report)
+        y_preds = {modal: tr.concatenate(y_preds[modal]).argmax(dim=-1).to('cpu') for modal in y_preds.keys()}
+        reports = {
+            modal: pd.DataFrame(metrics.classification_report(y_true, y_preds[modal], digits=4, output_dict=True))
+            for modal in y_preds.keys()
+        }
+        # concatenate all score DFs
+        for modal in reports.keys():
+            reports[modal].index = [f'{modal}_{name}' for name in reports[modal].index]
+        report = pd.concat(reports)
         return report
 
 

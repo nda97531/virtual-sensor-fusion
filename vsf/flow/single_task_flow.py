@@ -29,17 +29,18 @@ class SingleTaskFlow(BaseFlow):
 
             # record batch log
             train_loss += loss.item()
-            y_true.append(y.to('cpu'))
-            y_pred.append(pred.to('cpu'))
+            y_true.append(y)
+            y_pred.append(pred)
 
         # record epoch log
         train_loss /= len(dataloader)
-        metric = f1_score_from_prob(tr.concatenate(y_true), tr.concatenate(y_pred))
+        y_true = tr.concatenate(y_true).to('cpu')
+        y_pred = tr.concatenate(y_pred).to('cpu')
+        metric = f1_score_from_prob(y_true, y_pred)
         training_log = {'loss': train_loss, 'metric': metric, 'lr': self.optimizer.param_groups[0]['lr']}
         return training_log
 
     def _valid_epoch(self, dataloader: DataLoader) -> dict:
-        num_batches = len(dataloader)
         valid_loss = 0
 
         y_true = []
@@ -53,12 +54,11 @@ class SingleTaskFlow(BaseFlow):
             y_true.append(y)
             y_pred.append(pred)
 
-        valid_loss /= num_batches
+        # record epoch log
+        valid_loss /= len(dataloader)
         y_true = tr.concatenate(y_true).to('cpu')
         y_pred = tr.concatenate(y_pred).to('cpu')
         metric = f1_score_from_prob(y_true, y_pred)
-
-        # record epoch log
         valid_log = {'loss': valid_loss, 'metric': metric}
         return valid_log
 
@@ -74,7 +74,7 @@ class SingleTaskFlow(BaseFlow):
             y_pred.append(pred)
 
         y_true = tr.concatenate(y_true).to('cpu')
-        y_pred = tr.concatenate(y_pred).to('cpu').argmax(axis=-1)
+        y_pred = tr.concatenate(y_pred).to('cpu').argmax(dim=-1)
         report = metrics.classification_report(y_true, y_pred, digits=4, output_dict=True)
         report = pd.DataFrame(report)
         return report
