@@ -36,8 +36,8 @@ class VSFFlow(BaseFlow):
             train_cls_loss += cls_loss.item()
             train_contrast_loss += contrast_loss.item()
             y_true.append(y)
-            for modal, class_logits in class_logits_dict.items():
-                y_preds[modal].append(class_logits)
+            for modal in class_logits_dict.keys():
+                y_preds[modal].append(class_logits_dict.get(modal))
 
         # record epoch log
         train_cls_loss /= len(dataloader)
@@ -70,8 +70,8 @@ class VSFFlow(BaseFlow):
             valid_cls_loss += cls_loss.item()
             valid_contrast_loss += contrast_loss.item()
             y_true.append(y)
-            for modal, class_logits in class_logits_dict.items():
-                y_preds[modal].append(class_logits)
+            for modal in class_logits_dict.keys():
+                y_preds[modal].append(class_logits_dict.get(modal))
 
         # record epoch log
         valid_cls_loss /= len(dataloader)
@@ -96,8 +96,8 @@ class VSFFlow(BaseFlow):
             y = y.to(self.device)
             class_logits_dict, contrast_loss = model(x)
             y_true.append(y)
-            for modal, class_logits in class_logits_dict.items():
-                y_preds[modal].append(class_logits)
+            for modal in class_logits_dict.keys():
+                y_preds[modal].append(class_logits_dict.get(modal))
 
         y_true = tr.concatenate(y_true).to('cpu')
         y_preds = {modal: tr.concatenate(y_preds[modal]).argmax(dim=-1).to('cpu') for modal in y_preds.keys()}

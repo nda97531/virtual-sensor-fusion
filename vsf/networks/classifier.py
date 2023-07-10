@@ -45,7 +45,7 @@ class MaskedClassifiers(nn.Module):
                 if 'all', then all data will be passed through all classifiers
 
         Returns:
-            a tuple, element at index I
+            a tuple, element at index i is the output of classifier i.
         """
         if mask == 'all':
             output = tuple(self.fcs[i](x) for i in range(len(self.fcs)))

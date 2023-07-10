@@ -57,6 +57,13 @@ class CMCLoss(ContrastiveLoss):
         self.temp = temp
 
     def forward(self, all_features: tr.Tensor):
+        """
+        Args:
+            all_features: tensor shape [modal, batch, feature]
+
+        Returns:
+            CMC loss
+        """
         assert len(all_features) > 1, 'At least 2 modals are required for contrastive loss'
 
         if len(all_features) == 2:

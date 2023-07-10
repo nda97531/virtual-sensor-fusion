@@ -3,6 +3,8 @@ from typing import Dict
 import torch as tr
 import torch.nn as nn
 
+from vsf.tensor_dict import TensorDict
+
 
 class BasicClsModel(nn.Module):
     def __init__(self, backbone: nn.Module, classifier: nn.Module, dropout: float = 0.5) -> None:
@@ -112,16 +114,18 @@ class VSFModel(nn.Module):
 
         Returns:
             a tuple of 2 elements:
-                - a dict: dict[modal name] = predicted class probabilities tensor shape [batch, num class]
+                - a TensorDict, keys are modal names, values are class logits predicted from that modal,
+                    value tensor shape is [batch, num class]
                 - contrastive loss (pytorch float)
         """
-        x_dict = {
-            modal: self.dropout(
-                self.backbones[modal](tr.permute(x_dict[modal], [0, 2, 1]), **backbone_kwargs)
-            )
-            for modal in self.backbones.keys()
-        }
+        x_dict = TensorDict(
+            x=tr.stack([
+                self.dropout(self.backbones[modal](tr.permute(x_dict[modal], [0, 2, 1]), **backbone_kwargs))
+                for modal in self.backbones.keys()
+            ]),
+            keys=list(self.backbones.keys())
+        )
         # dict[modal] = [batch, channel]
 
-        class_probs, contrast_loss = self.distributor(x_dict, **head_kwargs)
-        return class_probs, contrast_loss
+        class_logits, contrast_loss = self.distributor(x_dict, **head_kwargs)
+        return class_logits, contrast_loss
