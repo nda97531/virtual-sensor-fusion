@@ -87,6 +87,7 @@ class CocoaLoss(ContrastiveLoss):
         """
         super().__init__(*args, **kwargs)
         self.temp = temp
+        self.max_neg_sim = None
 
     def forward(self, all_features: tr.Tensor):
         assert len(all_features) > 1, 'At least 2 modals are required for contrastive loss'
@@ -96,7 +97,11 @@ class CocoaLoss(ContrastiveLoss):
         # similarity between all pairs of modals for each batch, shape [batch, modal, modal]
         pos_similarity = tr.matmul(all_features.permute([1, 0, 2]), all_features.permute([1, 2, 0]))
         pos_similarity = tr.exp(pos_similarity / self.temp)
-        tri_mask = tr.full_like(pos_similarity, fill_value=True, dtype=tr.bool)
+        finite_idx = tr.isfinite(pos_similarity)
+        if not finite_idx.all():
+            max_pos_sim = tr.max(pos_similarity[finite_idx]).detach()
+            pos_similarity = tr.clamp(pos_similarity, max=max_pos_sim)
+        tri_mask = tr.full_like(pos_similarity, fill_value=True, dtype=tr.bool, requires_grad=False)
         tri_mask[:, tr.arange(num_modal), tr.arange(num_modal)] = False
         pos_similarity = pos_similarity[tri_mask].reshape([-1, num_modal, num_modal - 1])
         # shape [batch, modal, modal] -> [batch]
@@ -106,7 +111,10 @@ class CocoaLoss(ContrastiveLoss):
         # similarity between all pairs of batch indices for each modal, shape [modal, batch, batch]
         neg_similarity = tr.matmul(all_features, all_features.permute([0, 2, 1]))
         neg_similarity = tr.exp(neg_similarity / self.temp)
-        tri_mask = tr.full_like(neg_similarity, fill_value=True, dtype=tr.bool)
+        if self.max_neg_sim is None:
+            self.max_neg_sim = tr.max(neg_similarity[tr.isfinite(neg_similarity)]).detach()
+        neg_similarity = tr.clamp(neg_similarity, max=self.max_neg_sim)
+        tri_mask = tr.full_like(neg_similarity, fill_value=True, dtype=tr.bool, requires_grad=False)
         tri_mask[:, tr.arange(batch_size), tr.arange(batch_size)] = False
         neg_similarity = neg_similarity[tri_mask].reshape([-1, batch_size, batch_size - 1])
         # shape [modal, batch, batch] -> [batch]
