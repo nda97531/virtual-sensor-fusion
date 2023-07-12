@@ -10,23 +10,24 @@ from vsf.tensor_dict import TensorDict
 
 
 class OneSetDistributor(nn.Module):
-    def __init__(self, input_dims: dict, contrast_feature_dim: int, num_classes: dict,
-                 contrastive_loss_func: ContrastiveLoss, main_modal: str = None) -> None:
+    def __init__(self, input_dims: dict, num_classes: dict,
+                 contrastive_loss_func: ContrastiveLoss, contrast_feature_dim: int = None,
+                 main_modal: str = None) -> None:
         """
         Distributor for VSF with a single labelled multi-modal dataset.
         All modals are contrasted together, some of them output class probabilities.
 
         Args:
             input_dims: dict[modal name]: input feature dimension (int)
-            contrast_feature_dim: feature dimension for contrastive loss
             num_classes: dict[modal name]: number of output classes (int);
                 all keys if this dict must also be presented in `input_dims`
+            contrast_feature_dim: feature dimension for FC before contrastive loss; default: don't use connect FC
             main_modal: name of the main modal
         """
         super().__init__()
         # connect FCs, used before contrastive loss
         self.connect_fc = nn.ModuleDict({
-            modal: nn.Linear(dim, contrast_feature_dim)
+            modal: nn.Linear(dim, contrast_feature_dim) if contrast_feature_dim else nn.Identity()
             for modal, dim in input_dims.items()
         })
         # classifiers

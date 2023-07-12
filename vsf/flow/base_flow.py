@@ -24,7 +24,7 @@ class BaseFlow(ABC):
             model: model object
             optimizer: optimizer object
             device: hardware device to run, example: 'cpu', 'cuda:0', 'cuda:1'
-            loss_fn: loss function
+            loss_fn: classification loss function
             callbacks: list of callback objects
         """
         self.model = model.to(device)
@@ -45,7 +45,7 @@ class BaseFlow(ABC):
             epoch: epoch index
 
         Returns:
-
+            list of CallbackAction
         """
         actions = []
 

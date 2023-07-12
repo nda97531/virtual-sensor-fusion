@@ -1,4 +1,6 @@
 from collections import defaultdict
+from typing import Union, List
+
 import pandas as pd
 import torch as tr
 from sklearn import metrics
@@ -7,9 +9,32 @@ from tqdm import tqdm
 
 from vsf.flow.base_flow import BaseFlow
 from vsf.flow.flow_functions import f1_score_from_prob
+from vsf.flow.torch_callbacks import TorchCallback
 
 
 class VSFFlow(BaseFlow):
+    def __init__(self, model: tr.nn.Module,
+                 cls_optimizer: tr.optim.Optimizer,
+                 contrast_optimizer: tr.optim.Optimizer,
+                 device: str,
+                 loss_fn: Union[tr.nn.Module, callable, list, str] = 'classification_auto',
+                 callbacks: List[TorchCallback] = None):
+        """
+        Flow for VFS with 2 separate optimizers and 2 losses
+
+        Args:
+            model:
+            cls_optimizer: optimizer for classification loss
+            contrast_optimizer: optimizer for contrastive loss
+            device:
+            loss_fn:
+            callbacks:
+        """
+        super().__init__(model=model, optimizer=None, device=device, loss_fn=loss_fn, callbacks=callbacks)
+        del self.optimizer
+        self.cls_optimizer = cls_optimizer
+        self.contrast_optimizer = contrast_optimizer
+
     def _train_epoch(self, dataloader: DataLoader) -> dict:
         train_cls_loss = 0
         train_contrast_loss = 0
@@ -24,13 +49,14 @@ class VSFFlow(BaseFlow):
             class_logits_dict, contrast_loss = self.model(x)
             cls_loss = sum(self.loss_fn(class_logits, y) for class_logits in class_logits_dict.values())
 
-            # add all losses together
-            loss = cls_loss + contrast_loss
-
             # Backpropagation
-            self.optimizer.zero_grad()
-            loss.backward()
-            self.optimizer.step()
+            self.cls_optimizer.zero_grad()
+            cls_loss.backward(retain_graph=True)
+            self.cls_optimizer.step()
+
+            self.contrast_optimizer.zero_grad()
+            contrast_loss.backward()
+            self.contrast_optimizer.step()
 
             # record batch log
             train_cls_loss += cls_loss.item()
@@ -51,7 +77,8 @@ class VSFFlow(BaseFlow):
         training_log = {'loss': train_cls_loss + train_contrast_loss,
                         'cls loss': train_cls_loss, 'contrastive loss': train_contrast_loss}
         training_log.update(scores)
-        training_log['lr'] = self.optimizer.param_groups[0]['lr']
+        training_log['cls_lr'] = self.cls_optimizer.param_groups[0]['lr']
+        training_log['contrast_lr'] = self.contrast_optimizer.param_groups[0]['lr']
         return training_log
 
     def _valid_epoch(self, dataloader: DataLoader) -> dict:
@@ -108,7 +135,7 @@ class VSFFlow(BaseFlow):
         # concatenate all score DFs
         for modal in reports.keys():
             reports[modal].index = [f'{modal}_{name}' for name in reports[modal].index]
-        report = pd.concat(reports)
+        report = pd.concat(reports.values())
         return report
 
 
