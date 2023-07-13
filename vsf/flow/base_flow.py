@@ -16,7 +16,8 @@ class BaseFlow(ABC):
                  optimizer: tr.optim.Optimizer,
                  device: str,
                  loss_fn: Union[tr.nn.Module, callable, list, str] = 'classification_auto',
-                 callbacks: List[TorchCallback] = None):
+                 callbacks: List[TorchCallback] = None,
+                 callback_criterion: str = 'loss'):
         """
         Abstract base class for train/valid/test flow
 
@@ -26,6 +27,7 @@ class BaseFlow(ABC):
             device: hardware device to run, example: 'cpu', 'cuda:0', 'cuda:1'
             loss_fn: classification loss function
             callbacks: list of callback objects
+            callback_criterion: criterion to run callback; for example: checkpoint with best 'loss' or 'f1-score', etc.
         """
         self.model = model.to(device)
         self.optimizer = optimizer
@@ -36,6 +38,7 @@ class BaseFlow(ABC):
         self.valid_log = []
 
         self.callbacks = callbacks
+        self.callback_criterion = callback_criterion
 
     def run_callbacks(self, epoch: int) -> List[CallbackAction]:
         """
@@ -51,12 +54,11 @@ class BaseFlow(ABC):
 
         for callback in self.callbacks:
             if isinstance(callback, TorchCallback):
-                actions.append(
-                    callback.on_epoch_end(epoch, self.model, self.train_log[-1]['loss'], self.valid_log[-1]['loss'])
-                )
+                actions.append(callback.on_epoch_end(epoch, self.model,
+                                                     self.train_log[-1][self.callback_criterion],
+                                                     self.valid_log[-1][self.callback_criterion]))
             elif isinstance(callback, ReduceLROnPlateau):
-                callback.step(self.valid_log[-1]['loss'] if callback.mode == 'min'
-                              else self.valid_log[-1]['metric'])
+                callback.step(self.valid_log[-1][self.callback_criterion])
             else:
                 raise ValueError(f'Unsupported callback: {type(callback)}')
 
@@ -92,7 +94,7 @@ class BaseFlow(ABC):
             dataloader: DataLoader object or a list of objects
 
         Returns:
-            a dict of training log. Example: {'loss': 0.1, 'metric': 0.99, 'lr': 0.001}
+            a dict of training log. Example: {'loss': 0.1, 'f1': 0.99, 'lr': 0.001}
         """
         raise NotImplementedError
 

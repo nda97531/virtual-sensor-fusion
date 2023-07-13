@@ -18,7 +18,8 @@ class VSFFlow(BaseFlow):
                  contrast_optimizer: tr.optim.Optimizer,
                  device: str,
                  loss_fn: Union[tr.nn.Module, callable, list, str] = 'classification_auto',
-                 callbacks: List[TorchCallback] = None):
+                 callbacks: List[TorchCallback] = None,
+                 callback_criterion: str = 'loss'):
         """
         Flow for VFS with 2 separate optimizers and 2 losses
 
@@ -29,8 +30,10 @@ class VSFFlow(BaseFlow):
             device:
             loss_fn:
             callbacks:
+            callback_criterion:
         """
-        super().__init__(model=model, optimizer=None, device=device, loss_fn=loss_fn, callbacks=callbacks)
+        super().__init__(model=model, optimizer=None, device=device, loss_fn=loss_fn, callbacks=callbacks,
+                         callback_criterion=callback_criterion)
         del self.optimizer
         self.cls_optimizer = cls_optimizer
         self.contrast_optimizer = contrast_optimizer
@@ -70,7 +73,7 @@ class VSFFlow(BaseFlow):
         train_contrast_loss /= len(dataloader)
         y_true = tr.concatenate(y_true).to('cpu')
         scores = {
-            f'metric_{modal}': f1_score_from_prob(y_true, tr.concatenate(y_preds[modal]).to('cpu'))
+            f'f1_{modal}': f1_score_from_prob(y_true, tr.concatenate(y_preds[modal]).to('cpu'))
             for modal in y_preds.keys()
         }
 
@@ -105,7 +108,7 @@ class VSFFlow(BaseFlow):
         valid_contrast_loss /= len(dataloader)
         y_true = tr.concatenate(y_true).to('cpu')
         scores = {
-            f'metric_{modal}': f1_score_from_prob(y_true, tr.concatenate(y_preds[modal]).to('cpu'))
+            f'f1_{modal}': f1_score_from_prob(y_true, tr.concatenate(y_preds[modal]).to('cpu'))
             for modal in y_preds.keys()
         }
 

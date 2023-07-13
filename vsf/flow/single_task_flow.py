@@ -37,7 +37,7 @@ class SingleTaskFlow(BaseFlow):
         y_true = tr.concatenate(y_true).to('cpu')
         y_pred = tr.concatenate(y_pred).to('cpu')
         metric = f1_score_from_prob(y_true, y_pred)
-        training_log = {'loss': train_loss, 'metric': metric, 'lr': self.optimizer.param_groups[0]['lr']}
+        training_log = {'loss': train_loss, 'f1': metric, 'lr': self.optimizer.param_groups[0]['lr']}
         return training_log
 
     def _valid_epoch(self, dataloader: DataLoader) -> dict:
@@ -59,7 +59,7 @@ class SingleTaskFlow(BaseFlow):
         y_true = tr.concatenate(y_true).to('cpu')
         y_pred = tr.concatenate(y_pred).to('cpu')
         metric = f1_score_from_prob(y_true, y_pred)
-        valid_log = {'loss': valid_loss, 'metric': metric}
+        valid_log = {'loss': valid_loss, 'f1': metric}
         return valid_log
 
     def _test_epoch(self, dataloader: DataLoader, model: tr.nn.Module) -> pd.DataFrame:

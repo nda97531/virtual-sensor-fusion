@@ -203,7 +203,8 @@ if __name__ == '__main__':
                 ReduceLROnPlateau(optimizer=cls_optimizer, mode='min', patience=LR_SCHEDULER_PATIENCE, verbose=True),
                 ReduceLROnPlateau(optimizer=contrast_optimizer, mode='min', patience=LR_SCHEDULER_PATIENCE,
                                   verbose=True)
-            ]
+            ],
+            callback_criterion='f1_belt_acc'
         )
 
         # train and valid
