@@ -137,7 +137,8 @@ class CocoaLoss(ContrastiveLoss):
 
 
 class Cocoa2Loss(ContrastiveLoss):
-    def __init__(self, temp: float = 1, scale_loss: float = 1 / 32, lambda_: float = 3.9e-3, *args, **kwargs):
+    def __init__(self, temp: float = 1, norm2_eps: float = 1e-8, scale_loss: float = 1 / 32, lambda_: float = 3.9e-3,
+                 *args, **kwargs):
         """
         Calculate COCOA loss (with Cross Entropy) from features of multiple modals.
         Source: https://github.com/cruiseresearchgroup/COCOA/blob/main/src/losses.py
@@ -149,16 +150,19 @@ class Cocoa2Loss(ContrastiveLoss):
         """
         super().__init__(*args, **kwargs)
         self.temp = temp
+        self.eps = norm2_eps
         self.scale_loss = scale_loss
         self.lambda_ = lambda_
 
     def forward(self, all_features: tr.Tensor):
         assert len(all_features) > 1, 'At least 2 modals are required for contrastive loss'
         num_modal, batch_size, n_channel = all_features.shape
+        feature_norm2 = tr.sqrt((all_features ** 2).sum(dim=-1, keepdims=True)) + self.eps
 
         # # positive pairs
         # # [batch size, modal, modal]
         pos_similarity = tr.matmul(all_features.permute([1, 0, 2]), all_features.permute([1, 2, 0]))
+        pos_similarity /= tr.matmul(feature_norm2.permute([1, 0, 2]), feature_norm2.permute([1, 2, 0]))
         pos_distance = 1 - pos_similarity
         pos_distance = tr.exp(pos_distance / self.temp)
         # [batch size,]; each is sum of distances between all possible pair of modals in a batch index
@@ -167,10 +171,13 @@ class Cocoa2Loss(ContrastiveLoss):
         # # negative pairs
         # [modal, batch, batch]
         neg_similarity = tr.matmul(all_features, all_features.permute([0, 2, 1]))
-        neg_similarity = tr.exp(neg_similarity / self.temp)
-        tri_mask = tr.full_like(neg_similarity, fill_value=True, dtype=tr.bool)
+        neg_similarity /= tr.matmul(feature_norm2, feature_norm2.permute([0, 2, 1]))
+
+        tri_mask = tr.full_like(neg_similarity, fill_value=True, dtype=tr.bool, requires_grad=False)
         tri_mask[:, tr.arange(batch_size), tr.arange(batch_size)] = False
         neg_similarity = neg_similarity[tri_mask].reshape([-1, batch_size, batch_size - 1])
+
+        neg_similarity = tr.exp(neg_similarity / self.temp)
         neg_similarity = neg_similarity.mean(dim=-1).sum()
 
         error = pos_distance * self.scale_loss + neg_similarity * self.lambda_

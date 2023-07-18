@@ -22,7 +22,7 @@ class ModelCheckpoint(TorchCallback):
         self.smaller_better = smaller_better
         self.save_best_only = save_best_only
         self.save_weights_only = save_weights_only
-        self.current_best_result = float('inf')
+        self.current_best_result = float('inf') if smaller_better else -float('inf')
         self.current_best_epoch = -1
 
         os.makedirs(os.path.split(self.save_path)[0], exist_ok=True)
@@ -65,7 +65,7 @@ class EarlyStop(TorchCallback):
         self.patience = patience
         self.smaller_better = smaller_better
         self.epoch_without_improvements = 0
-        self.current_best_result = float('inf')
+        self.current_best_result = float('inf') if smaller_better else -float('inf')
 
     def on_epoch_end(self, epoch: int, model: tr.nn.Module, train_metric: float, valid_metric: float):
         new_result = valid_metric

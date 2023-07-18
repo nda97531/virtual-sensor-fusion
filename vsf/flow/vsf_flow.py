@@ -49,17 +49,19 @@ class VSFFlow(BaseFlow):
             y = y.to(self.device)
 
             # Compute prediction and losses
-            class_logits_dict, contrast_loss = self.model(x)
-            cls_loss = sum(self.loss_fn(class_logits, y) for class_logits in class_logits_dict.values())
-
-            # Backpropagation
-            self.cls_optimizer.zero_grad()
-            cls_loss.backward(retain_graph=True)
-            self.cls_optimizer.step()
-
+            _, contrast_loss = self.model(x)
+            # backprop
             self.contrast_optimizer.zero_grad()
             contrast_loss.backward()
             self.contrast_optimizer.step()
+
+            # Compute prediction and losses
+            class_logits_dict, _ = self.model(x)
+            cls_loss = sum(self.loss_fn(class_logits, y) for class_logits in class_logits_dict.values())
+            # Backpropagation
+            self.cls_optimizer.zero_grad()
+            cls_loss.backward()
+            self.cls_optimizer.step()
 
             # record batch log
             train_cls_loss += cls_loss.item()
