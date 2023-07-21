@@ -1,25 +1,21 @@
-import itertools
 import os
 import re
 from glob import glob
-from typing import Tuple, Union
 
 import numpy as np
-import orjson
 import pandas as pd
 import polars as pl
 from loguru import logger
 
 from vsf.public_datasets.base_classes import ParquetDatasetFormatter, NpyWindowFormatter
-from vsf.public_datasets.constant import G_TO_MS2, DEG_TO_RAD
 from vsf.utils.pl_dataframe import resample_numeric_df as pl_resample_numeric_df
-from vsf.utils.time import str_2_timestamp
 
 
 class SFUConst:
     CLASSES = ['Falls', 'Near_Falls', 'ADLs']
     FALL_CLASS = 'Falls'
     MODAL = 'inertia'
+    SENSOR_POSITIONS = ['head', 'sternum', 'waist', 'lthigh', 'rthigh', 'lankle', 'rankle']
 
     # rename DF column names
     COLUMNS_CONVERT = {
@@ -81,10 +77,10 @@ class SFUParquet(ParquetDatasetFormatter):
         for col in old_cols:
             for old_suffix, new_suffix in SFUConst.COLUMNS_CONVERT.items():
                 if col.endswith(old_suffix):
-                    new_cols.append(col.replace(old_suffix, new_suffix))
+                    new_cols.append(col.replace(old_suffix, new_suffix).replace('.', ''))
                     break
             else:
-                new_cols.append(col)
+                new_cols.append(col.replace('.', ''))
         df.columns = new_cols
 
         df = pl_resample_numeric_df(df, timestamp_col='timestamp(ms)',
@@ -182,20 +178,20 @@ class SFUNpyWindow(NpyWindowFormatter):
 
 
 if __name__ == '__main__':
-    # SFUParquet(
-    #     raw_folder='/mnt/data_partition/UCD/datasets/SFU-IMU',
-    #     destination_folder='/mnt/data_partition/UCD/UCD04 - Virtual sensor fusion/processed_parquet/SFU-IMU',
-    #     sampling_rates={SFUConst.MODAL: 50}
-    # ).run()
-
-    col_name_pattern = '{pos}_acc_{axis}(m/s^2)'
-    SFUNpyWindow(
-        parquet_root_dir='/mnt/data_partition/UCD/UCD04 - Virtual sensor fusion/processed_parquet/SFU-IMU',
-        window_size_sec=4, step_size_sec=2, min_step_size_sec=0.5, max_short_window=5,
-        modal_cols={
-            'inertia': {
-                pos: [col_name_pattern.format(pos=pos, axis=a) for a in ['x', 'y', 'z']]
-                for pos in ['head', 'sternum', 'waist', 'l.thigh', 'r.thigh', 'l.ankle', 'r.ankle']
-            }
-        }
+    SFUParquet(
+        raw_folder='/mnt/data_partition/UCD/datasets/SFU-IMU',
+        destination_folder='/mnt/data_partition/UCD/UCD04 - Virtual sensor fusion/processed_parquet/SFU-IMU',
+        sampling_rates={SFUConst.MODAL: 50}
     ).run()
+
+    # col_name_pattern = '{pos}_acc_{axis}(m/s^2)'
+    # SFUNpyWindow(
+    #     parquet_root_dir='/mnt/data_partition/UCD/UCD04 - Virtual sensor fusion/processed_parquet/SFU-IMU',
+    #     window_size_sec=4, step_size_sec=2, min_step_size_sec=0.5, max_short_window=5,
+    #     modal_cols={
+    #         'inertia': {
+    #             pos: [col_name_pattern.format(pos=pos, axis=a) for a in ['x', 'y', 'z']]
+    #             for pos in SFUConst.SENSOR_POSITIONS
+    #         }
+    #     }
+    # ).run()

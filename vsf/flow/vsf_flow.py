@@ -26,7 +26,7 @@ class VSFFlow(BaseFlow):
         Args:
             model:
             cls_optimizer: optimizer for classification loss
-            contrast_optimizer: optimizer for contrastive loss
+            contrast_optimizer: optimizer for contrastive loss; pass None if only 1 optimizer is used
             device:
             loss_fn:
             callbacks:
@@ -48,20 +48,30 @@ class VSFFlow(BaseFlow):
             x = self.tensor_to_device(x)
             y = y.to(self.device)
 
-            # Compute prediction and losses
-            _, contrast_loss = self.model(x)
-            # backprop
-            self.contrast_optimizer.zero_grad()
-            contrast_loss.backward()
-            self.contrast_optimizer.step()
+            if self.contrast_optimizer is not None:
+                # Compute prediction and losses
+                _, contrast_loss = self.model(x)
+                # backprop
+                self.contrast_optimizer.zero_grad()
+                contrast_loss.backward()
+                self.contrast_optimizer.step()
 
-            # Compute prediction and losses
-            class_logits_dict, _ = self.model(x)
-            cls_loss = sum(self.loss_fn(class_logits, y) for class_logits in class_logits_dict.values())
-            # Backpropagation
-            self.cls_optimizer.zero_grad()
-            cls_loss.backward()
-            self.cls_optimizer.step()
+                # Compute prediction and losses
+                class_logits_dict, _ = self.model(x)
+                cls_loss = sum(self.loss_fn(class_logits, y) for class_logits in class_logits_dict.values())
+                # Backpropagation
+                self.cls_optimizer.zero_grad()
+                cls_loss.backward()
+                self.cls_optimizer.step()
+            else:
+                # Compute prediction and losses
+                class_logits_dict, contrast_loss = self.model(x)
+                cls_loss = sum(self.loss_fn(class_logits, y) for class_logits in class_logits_dict.values())
+                loss = cls_loss + contrast_loss
+                # Backpropagation
+                self.cls_optimizer.zero_grad()
+                loss.backward()
+                self.cls_optimizer.step()
 
             # record batch log
             train_cls_loss += cls_loss.item()
