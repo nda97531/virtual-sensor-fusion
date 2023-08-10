@@ -100,6 +100,7 @@ class CocoaLoss(ContrastiveLoss):
 
     def forward(self, all_features: tr.Tensor):
         assert len(all_features) > 1, 'At least 2 modals are required for contrastive loss'
+        assert all_features.shape[1] > 1, 'At least 2 batch items are required for contrastive loss'
         num_modal, batch_size, n_channel = all_features.shape
         feature_norm2 = tr.sqrt((all_features ** 2).sum(dim=-1, keepdims=True)) + self.eps
 

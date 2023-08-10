@@ -48,7 +48,16 @@ class VSFFlow(BaseFlow):
             x = self.tensor_to_device(x)
             y = y.to(self.device)
 
-            if self.contrast_optimizer is not None:
+            if self.contrast_optimizer is None:
+                # Compute prediction and losses
+                class_logits_dict, contrast_loss = self.model(x, y)
+                cls_loss = sum(self.loss_fn(class_logits, y) for class_logits in class_logits_dict.values())
+                loss = cls_loss + contrast_loss
+                # Backpropagation
+                self.cls_optimizer.zero_grad()
+                loss.backward()
+                self.cls_optimizer.step()
+            else:
                 # Compute prediction and losses
                 _, contrast_loss = self.model(x)
                 # backprop
@@ -62,15 +71,6 @@ class VSFFlow(BaseFlow):
                 # Backpropagation
                 self.cls_optimizer.zero_grad()
                 cls_loss.backward()
-                self.cls_optimizer.step()
-            else:
-                # Compute prediction and losses
-                class_logits_dict, contrast_loss = self.model(x)
-                cls_loss = sum(self.loss_fn(class_logits, y) for class_logits in class_logits_dict.values())
-                loss = cls_loss + contrast_loss
-                # Backpropagation
-                self.cls_optimizer.zero_grad()
-                loss.backward()
                 self.cls_optimizer.step()
 
             # record batch log
@@ -92,8 +92,11 @@ class VSFFlow(BaseFlow):
         training_log = {'loss': train_cls_loss + train_contrast_loss,
                         'cls loss': train_cls_loss, 'contrastive loss': train_contrast_loss}
         training_log.update(scores)
-        training_log['cls_lr'] = self.cls_optimizer.param_groups[0]['lr']
-        training_log['contrast_lr'] = self.contrast_optimizer.param_groups[0]['lr']
+        if self.contrast_optimizer is None:
+            training_log['lr'] = self.cls_optimizer.param_groups[0]['lr']
+        else:
+            training_log['cls_lr'] = self.cls_optimizer.param_groups[0]['lr']
+            training_log['contrast_lr'] = self.contrast_optimizer.param_groups[0]['lr']
         return training_log
 
     def _valid_epoch(self, dataloader: DataLoader) -> dict:
