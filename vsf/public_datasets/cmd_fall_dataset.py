@@ -222,6 +222,7 @@ class CMDFallParquet(ParquetDatasetFormatter):
             list of uninterrupted segments; each one is a dict with keys are modal names, values are DFs
         """
         # read all DFs
+        # key: modal; value: whole original session DF
         data_dfs = {
             sensor: self.read_accelerometer_df_file(data_file) if sensor.startswith(
                 CMDFallConst.MODAL_INERTIA)
@@ -230,6 +231,7 @@ class CMDFallParquet(ParquetDatasetFormatter):
         }
 
         # split interrupted signals into sub-sessions
+        # key: modal; value: timestamp segments (start & end ts)
         ts_segments = {}
         for sensor, df in data_dfs.items():
             ts = df.get_column('timestamp(ms)').to_numpy()
@@ -243,7 +245,7 @@ class CMDFallParquet(ParquetDatasetFormatter):
         combined_ts_segments = interval_intersection(list(ts_segments.values()))
         logger.info(f'Number of segments: ' + '; '.join(f'{k}: {len(v)}' for k, v in ts_segments.items()))
 
-        # resample each segment
+        # crop segments based on timestamps found above
         results = []
         label_df: pl.DataFrame = None
         kept_segments = 0
@@ -262,13 +264,14 @@ class CMDFallParquet(ParquetDatasetFormatter):
             segment_dfs = defaultdict(list)
             # for each sensor
             for sensor, df in data_dfs.items():
+                # remove sensor ID, keep sensor type
+                sensor = sensor.split('_')[0]
+
                 # crop the segment in sensor DF
                 df = df.filter(
                     (pl.col('timestamp(ms)') >= combined_ts_segment[0]) &
                     (pl.col('timestamp(ms)') <= combined_ts_segment[1])
                 )
-
-                sensor = sensor.split('_')[0]
                 # get label DF if not already exists
                 if (sensor == CMDFallConst.MODAL_INERTIA) and (label_df is None):
                     label_df = df.select('timestamp(ms)', 'label')
