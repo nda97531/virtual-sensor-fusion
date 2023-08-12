@@ -270,10 +270,8 @@ class CMDFallParquet(ParquetDatasetFormatter):
                 sensor = sensor.split('_')[0]
 
                 # crop the segment in sensor DF
-                df = df.filter(
-                    (pl.col('timestamp(ms)') >= combined_ts_segment[0]) &
-                    (pl.col('timestamp(ms)') <= combined_ts_segment[1])
-                )
+                df = df.filter(pl.col('timestamp(ms)').is_between(combined_ts_segment[0].item(),
+                                                                  combined_ts_segment[1].item()))
 
                 # interpolate to resample
                 df = df.select(pl.exclude('label'))
@@ -318,8 +316,7 @@ class CMDFallParquet(ParquetDatasetFormatter):
         for anno_row in anno_df.iter_rows(named=True):
             ske_df = ske_df.with_columns(
                 label=pl.when(
-                    (pl.col('frame_index') >= anno_row['start_frame']) &
-                    (pl.col('frame_index') <= anno_row['stop_frame'])
+                    pl.col('frame_index').is_between(anno_row['start_frame'], anno_row['stop_frame'])
                 ).then(anno_row['action_id']).otherwise(pl.col('label'))
             )
 
@@ -394,64 +391,53 @@ class CMDFallParquet(ParquetDatasetFormatter):
 
 
 class CMDFallNpyWindow(NpyWindowFormatter):
-    pass
-    # def run(self) -> pd.DataFrame:
-    #     # get list of parquet files
-    #     parquet_sessions = self.get_parquet_file_list()
-    #
-    #     result = []
-    #     # for each session
-    #     for parquet_session in parquet_sessions.iter_rows(named=True):
-    #         # get session info
-    #         _, subject, session_id = self.get_parquet_session_info(list(parquet_session.values())[0])
-    #         session_regex = re.match('Subject(?:[0-9]*)Activity([0-9]*)Trial([0-9]*)', session_id)
-    #         session_label, session_trial = (int(session_regex.group(i)) for i in [1, 2])
-    #
-    #         session_result = self.process_parquet_to_windows(
-    #             parquet_session=parquet_session,
-    #             subject=subject,
-    #             session_label=session_label,
-    #             is_short_activity=session_label in CMDFallConst.SHORT_ACTIVITIES
-    #         )
-    #
-    #         # add trial info
-    #         session_result['trial'] = session_trial
-    #
-    #         result.append(session_result)
-    #     result = pd.DataFrame(result)
-    #     return result
+    def run(self) -> pd.DataFrame:
+        # get list of parquet files
+        parquet_sessions = self.get_parquet_file_list()
+
+        result = []
+        # for each session
+        for parquet_session in parquet_sessions.iter_rows(named=True):
+            # get session info
+            modal, subject, session_id = self.get_parquet_session_info(list(parquet_session.values())[0])
+
+            session_result = self.process_parquet_to_windows(parquet_session=parquet_session, subject=subject)
+
+            result.append(session_result)
+        result = pd.DataFrame(result)
+        return result
 
 
 if __name__ == '__main__':
     parquet_dir = '/mnt/data_drive/projects/UCD04 - Virtual sensor fusion/processed_parquet/CMDFall'
     inertial_freq = 50
     skeletal_freq = 20
-    window_size_sec = 4
+    window_size_sec = 3
     step_size_sec = 1.5
     min_step_size_sec = 0.5
 
-    CMDFallParquet(
-        raw_folder='/mnt/data_drive/projects/raw datasets/CMDFall',
-        destination_folder=parquet_dir,
-        sampling_rates={CMDFallConst.MODAL_INERTIA: inertial_freq,
-                        CMDFallConst.MODAL_SKELETON: skeletal_freq},
-        use_accelerometer=[1, 155],
-        use_kinect=[3]
-    ).run()
-
-    # CMDFall = CMDFallNpyWindow(
-    #     parquet_root_dir=parquet_dir,
-    #     window_size_sec=window_size_sec,
-    #     step_size_sec=step_size_sec,
-    #     min_step_size_sec=min_step_size_sec,
-    #     max_short_window=3,
-    #     modal_cols={
-    #         CMDFallConst.MODAL_INERTIA: {
-    #             'wrist_acc': ['wrist_acc_x(m/s^2)', 'wrist_acc_y(m/s^2)', 'wrist_acc_z(m/s^2)'],
-    #             'belt_acc': ['belt_acc_x(m/s^2)', 'belt_acc_y(m/s^2)', 'belt_acc_z(m/s^2)']
-    #         },
-    #         CMDFallConst.MODAL_SKELETON: {
-    #             'skeleton': None
-    #         }
-    #     }
+    # CMDFallParquet(
+    #     raw_folder='/mnt/data_drive/projects/raw datasets/CMDFall',
+    #     destination_folder=parquet_dir,
+    #     sampling_rates={CMDFallConst.MODAL_INERTIA: inertial_freq,
+    #                     CMDFallConst.MODAL_SKELETON: skeletal_freq},
+    #     use_accelerometer=[1, 155],
+    #     use_kinect=[3]
     # ).run()
+
+    CMDFall = CMDFallNpyWindow(
+        parquet_root_dir=parquet_dir,
+        window_size_sec=window_size_sec,
+        step_size_sec=step_size_sec,
+        min_step_size_sec=min_step_size_sec,
+        max_short_window=3,
+        modal_cols={
+            CMDFallConst.MODAL_INERTIA: {
+                'waist_acc': ['waist_acc_x(m/s^2)', 'waist_acc_y(m/s^2)', 'waist_acc_z(m/s^2)'],
+                'wrist_acc': ['wrist_acc_x(m/s^2)', 'wrist_acc_y(m/s^2)', 'wrist_acc_z(m/s^2)']
+            },
+            CMDFallConst.MODAL_SKELETON: {
+                'skel3': [c.format(kinect_id=3) for c in CMDFallConst.SELECTED_SKELETON_COLS]
+            }
+        }
+    ).run()

@@ -204,8 +204,8 @@ class NpyWindowFormatter:
         info = tuple(info.group(i) for i in range(1, 4))
         return info
 
-    def slide_windows_from_modal_df(self, df: pl.DataFrame, modality: str, session_label: int,
-                                    is_short_activity: bool) -> dict:
+    def slide_windows_from_modal_df(self, df: pl.DataFrame, modality: str, session_label: int = None,
+                                    is_short_activity: bool = False) -> dict:
         """
         Slide windows from dataframe of 1 modal.
         If main activity of the session is a short activity, run shifting window instead.
@@ -290,8 +290,8 @@ class NpyWindowFormatter:
 
         return result
 
-    def process_parquet_to_windows(self, parquet_session: dict, subject: any, session_label: int,
-                                   is_short_activity: bool):
+    def process_parquet_to_windows(self, parquet_session: dict, subject: any, session_label: int = None,
+                                   is_short_activity: bool = False):
         """
         Process from parquet files for modals to window data (np array). All parquet files are of ONE session.
 
@@ -339,8 +339,11 @@ class NpyWindowFormatter:
 
         # check if label of all modals are the same
         for modal_label in modal_labels[1:]:
-            assert (modal_label[:min_num_windows] == modal_labels[0][:min_num_windows]).all(), \
-                'different labels between modals'
+            diff_lb = modal_label[:min_num_windows] != modal_labels[0][:min_num_windows]
+            if diff_lb.any():
+                logger.warning(f'Different labels between modals: {diff_lb.sum()}/{min_num_windows}')
+                modal_labels[0][:min_num_windows] = np.maximum(modal_labels[0][:min_num_windows],
+                                                               modal_label[:min_num_windows])
         # add label info
         session_result['label'] = modal_labels[0][:min_num_windows]
 
