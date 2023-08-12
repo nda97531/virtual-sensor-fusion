@@ -87,3 +87,12 @@ def interval_intersection(intervals: List[List[List[int]]]) -> List[List[int]]:
         pos_indices[np.argmin(endpoints)] += 1
 
     return result
+
+
+if __name__ == '__main__':
+    res = interval_intersection([
+        [[0, 10], [90, 100]],
+        [[0, 10], [80, 120]],
+        [[0, 10], [12, 50], [51, 120]]
+    ])
+    print(res)

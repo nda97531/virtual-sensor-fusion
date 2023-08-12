@@ -13,7 +13,7 @@ from loguru import logger
 from vsf.public_datasets.base_classes import ParquetDatasetFormatter, NpyWindowFormatter
 from vsf.public_datasets.constant import G_TO_MS2, DEG_TO_RAD
 from vsf.utils.pl_dataframe import resample_numeric_df as pl_resample_numeric_df
-from vsf.utils.time import str_2_timestamp
+from vsf.utils.time_utils import str_2_timestamp
 
 
 class UPFallConst:

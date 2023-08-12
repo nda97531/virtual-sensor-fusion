@@ -3,7 +3,7 @@ import polars as pl
 
 
 def resample_numeric_df(df: pl.DataFrame, timestamp_col: str, new_frequency: float,
-                        force_ts_dtype: bool = True) -> pl.DataFrame:
+                        start_ts: int = None, end_ts: int = None, force_ts_dtype: bool = True) -> pl.DataFrame:
     """
     Resample a DF by linear interpolation.
 
@@ -12,14 +12,18 @@ def resample_numeric_df(df: pl.DataFrame, timestamp_col: str, new_frequency: flo
         timestamp_col: timestamp column name in the DF
         new_frequency: new frequency to interpolate, this must be of the same unit as timestamps;
             example: timestamp unit is millisecond, frequency unit must be sample/millisecond
+        start_ts: new start ts for interpolated DF; default: use the old one
+        end_ts: new end ts for interpolated DF; default: use the old one
         force_ts_dtype: convert dtype of new timestamps to the same as old timestamps
 
     Returns:
         new dataframe
     """
     # get new timestamp array (unit: msec)
-    start_ts = df.item(0, timestamp_col)
-    end_ts = df.item(-1, timestamp_col)
+    if start_ts is None:
+        start_ts = df.item(0, timestamp_col)
+    if end_ts is None:
+        end_ts = df.item(-1, timestamp_col)
     new_ts = np.arange(np.floor((end_ts - start_ts) * new_frequency + 1)) / new_frequency + start_ts
     if force_ts_dtype:
         new_ts = new_ts.astype(type(start_ts))

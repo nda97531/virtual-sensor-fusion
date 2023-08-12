@@ -130,7 +130,6 @@ def get_trained_ske(ske_weight_path: str) -> nn.Module:
     return backbone
 
 
-
 if __name__ == '__main__':
     import argparse
 

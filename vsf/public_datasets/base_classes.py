@@ -9,7 +9,7 @@ from loguru import logger
 from scipy.stats import mode
 
 from vsf.utils.sliding_window import shifting_window, sliding_window
-from vsf.utils.string import rreplace
+from vsf.utils.string_utils import rreplace
 
 MODAL_PATH_PATTERN = '{root}/{modal}'
 PARQUET_PATH_PATTERN = MODAL_PATH_PATTERN + '/subject_{subject}/{session}.parquet'
