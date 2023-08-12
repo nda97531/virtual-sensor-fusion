@@ -39,5 +39,5 @@ def resample_numeric_df(df: pl.DataFrame, timestamp_col: str, new_frequency: flo
     for i, col in enumerate(cols_except_ts):
         new_df[col] = np.interp(x=new_ts, xp=df_timestamp, fp=df_value[:, i])
 
-    new_df = pl.DataFrame(new_df)
+    new_df = pl.DataFrame(new_df).set_sorted(timestamp_col)
     return new_df

@@ -36,7 +36,7 @@ class CMDFallConst:
         'rightHip', 'rightKnee', 'rightAnkle', 'rightFoot'
     ]
     SELECTED_JOINT_LIST = [
-        'shoulderCenter',
+        'hipCenter', 'shoulderCenter',
         'leftElbow', 'leftWrist',
         'rightElbow', 'rightWrist',
         'leftKnee', 'leftAnkle',
@@ -83,8 +83,10 @@ class CMDFallParquet(ParquetDatasetFormatter):
         Args:
             min_length_segment: only write segments longer than this threshold (unit: sec)
             use_accelerometer: inertial sensor IDs
-            use_kinect: kinect device IDs
+            use_kinect: kinect device IDs; frame index info is read from the first one in this list
         """
+        assert len(use_accelerometer), 'No accelerometer is used?'
+        assert len(use_kinect), 'No kinect is used? Label info is stored in skeleton files.'
         super().__init__(raw_folder, destination_folder, sampling_rates)
 
         assert len(set(use_accelerometer) - {1, 155}) == 0, 'Invalid inertial sensor ID'
@@ -96,11 +98,15 @@ class CMDFallParquet(ParquetDatasetFormatter):
 
         # if actual interval > expected interval * this coef; it's considered an interruption and DF will be split
         max_interval_coef = 4
-        # expected intervals in millisecond
+        # maximum intervals in millisecond
         self.max_interval = {
             CMDFallConst.MODAL_INERTIA: 1000 / CMDFallConst.RAW_INERTIA_FREQ * max_interval_coef,
             CMDFallConst.MODAL_SKELETON: 1000 / CMDFallConst.RAW_KINECT_FPS * max_interval_coef
         }
+
+        # read annotation file
+        anno_df = pl.read_csv(f'{raw_folder}/annotation.csv')
+        self.anno_df = anno_df.filter(pl.col('kinect_id') == use_kinect[0])
 
     @staticmethod
     def get_info_from_session_file(path: str) -> tuple:
@@ -130,7 +136,7 @@ class CMDFallParquet(ParquetDatasetFormatter):
         """
         session_id, subject, sensor_id = CMDFallParquet.get_info_from_session_file(path)
         sensor_pos = CMDFallConst.ACCELEROMETER_POSITION[sensor_id]
-        df = pl.read_csv(path, columns=['timestamp', 'x', 'y', 'z', 'label'])
+        df = pl.read_csv(path, columns=['timestamp', 'x', 'y', 'z'])
 
         df = df.with_columns(pl.col(['x', 'y', 'z']) * G_TO_MS2)
 
@@ -152,10 +158,8 @@ class CMDFallParquet(ParquetDatasetFormatter):
         Returns:
             array of the same shape
         """
-        # get x,y of hip joint to use as anchor
-        anchor_joint_idx = CMDFallConst.JOINTS_LIST.index('hipCenter')
         # remove unused joints
-        skeletons = skeletons[:, CMDFallConst.SELECTED_JOINT_IDX + [anchor_joint_idx], :]
+        skeletons = skeletons[:, CMDFallConst.SELECTED_JOINT_IDX, :]
 
         # straighten skeleton (rotate so that it stands up right)
         skeletons = skeletons.transpose([0, 2, 1])
@@ -163,12 +167,11 @@ class CMDFallParquet(ParquetDatasetFormatter):
         skeletons = skeletons.transpose([0, 2, 1])
 
         # move skeleton to coordinate origin
-        anchor_joint_xy = skeletons[:, -1:, :2]
-        lowest_z = skeletons[:, :, 2:].min(axis=1, keepdims=True)
-        offset = np.concatenate([anchor_joint_xy, lowest_z], axis=2)
-        # remove anchor joint
-        skeletons = skeletons[:, :-1, :]
-        skeletons -= offset
+        centre_xy = skeletons[:, :, :2].mean(axis=1, keepdims=True)
+        lowest_z = np.percentile(skeletons[:, :, 2], q=10)
+
+        skeletons[:, :, :2] -= centre_xy
+        skeletons[:, :, -1] -= lowest_z
 
         return skeletons
 
@@ -187,7 +190,7 @@ class CMDFallParquet(ParquetDatasetFormatter):
 
         df = pl.read_csv(path, skip_rows=1, has_header=False)  # columns=['timestamp', 'x', 'y', 'z', 'label'])
         data_df = df.get_column('column_4')
-        info_df = df.select(pl.col('column_1').alias('timestamp(ms)'))
+        info_df = df.select(pl.col('column_1').alias('timestamp(ms)'), pl.col('column_2').alias('frame_index'))
         del df
 
         # shape [frame, joint * axis]
@@ -213,7 +216,7 @@ class CMDFallParquet(ParquetDatasetFormatter):
 
     def process_session(self, data_files: dict) -> list:
         """
-        Produce a fully processed dataframe for each modal in a session
+        Produce a processed dataframe for each modal in a session
 
         Args:
             data_files: a dict with keys are modal names, values are raw data paths
@@ -247,7 +250,6 @@ class CMDFallParquet(ParquetDatasetFormatter):
 
         # crop segments based on timestamps found above
         results = []
-        label_df: pl.DataFrame = None
         kept_segments = 0
         kept_time = 0
         total_time = 0
@@ -272,14 +274,6 @@ class CMDFallParquet(ParquetDatasetFormatter):
                     (pl.col('timestamp(ms)') >= combined_ts_segment[0]) &
                     (pl.col('timestamp(ms)') <= combined_ts_segment[1])
                 )
-                # get label DF if not already exists
-                if (sensor == CMDFallConst.MODAL_INERTIA) and (label_df is None):
-                    label_df = df.select('timestamp(ms)', 'label')
-                    if label_df.get_column('timestamp(ms)').is_sorted():
-                        label_df = label_df.set_sorted('timestamp(ms)')
-                    else:
-                        label_df = label_df.sort(by='timestamp(ms)')
-                        logger.info('Sorting because not already sorted')
 
                 # interpolate to resample
                 df = df.select(pl.exclude('label'))
@@ -287,27 +281,53 @@ class CMDFallParquet(ParquetDatasetFormatter):
                                             start_ts=combined_ts_segment[0], end_ts=combined_ts_segment[1])
                 # only keep ts column for 1 DF of each sensor for later concatenation
                 if len(segment_dfs[sensor]):
-                    df = df.drop('timestamp(ms)')
+                    df = df.select(pl.exclude('timestamp(ms)', 'frame_index'))
                 segment_dfs[sensor].append(df)
 
             # concat DFs with the same sensor type, add label column
-            for sensor in segment_dfs.keys():
-                this_df = pl.concat(segment_dfs[sensor], how='horizontal')
-
-                # assign labels
-                # it is sorted after interpolation
-                this_df = this_df.set_sorted('timestamp(ms)')
-                this_df = this_df.join_asof(label_df, on='timestamp(ms)', strategy='nearest')
-                segment_dfs[sensor] = this_df
+            segment_dfs = {sensor: pl.concat(list_dfs, how='horizontal')
+                           for sensor, list_dfs in segment_dfs.items()}
 
             results.append(segment_dfs)
         logger.info(f'Kept {kept_segments}/{len(combined_ts_segments)} segment(s)')
         logger.info('Kept %.02f/%.02f (sec); %.02f%%' % (kept_time, total_time, kept_time / total_time * 100))
         return results
 
-    def run(self):
-        assert len(self.use_accelerometer), 'No accelerometer is used?'
+    def assign_label(self, ske_df: pl.DataFrame, acc_df: pl.DataFrame, anno_df: pl.DataFrame) -> tuple:
+        """
+        Add a 'label' column
+        Args:
+            ske_df: skeleton DF
+            acc_df: accelerometer DF
+            anno_df: annotation DF for this session; filtered from self.anno_df
 
+        Returns:
+            2 DFs (ske, acc) but with `label` column
+        """
+        start_ts_diff = abs(ske_df.item(0, 'timestamp(ms)') - acc_df.item(0, 'timestamp(ms)'))
+        end_ts_diff = abs(ske_df.item(-1, 'timestamp(ms)') - acc_df.item(-1, 'timestamp(ms)'))
+        assert \
+            (start_ts_diff <= self.max_interval[CMDFallConst.MODAL_SKELETON]) and \
+            (end_ts_diff <= self.max_interval[CMDFallConst.MODAL_SKELETON]), \
+            'Accelerometer and skeleton DFs must be synchronised.'
+
+        # fill label column with 0 (unknown class)
+        ske_df = ske_df.with_columns(pl.Series(name='label', values=np.zeros(len(ske_df), dtype=int)))
+
+        # fill labels into column of ske DF
+        for anno_row in anno_df.iter_rows(named=True):
+            ske_df = ske_df.with_columns(
+                label=pl.when(
+                    (pl.col('frame_index') >= anno_row['start_frame']) &
+                    (pl.col('frame_index') <= anno_row['stop_frame'])
+                ).then(anno_row['action_id']).otherwise(pl.col('label'))
+            )
+
+        # fill label into acc DF
+        acc_df = acc_df.join_asof(ske_df.select('timestamp(ms)', 'label'), on='timestamp(ms)', strategy='nearest')
+        return ske_df, acc_df
+
+    def run(self):
         logger.info('Scanning for sessions...')
 
         # scan inertial sensor files
@@ -316,6 +336,7 @@ class CMDFallParquet(ParquetDatasetFormatter):
             first_inertia_name: sorted(
                 glob(f'{self.raw_folder}/accelerometer/*I{self.use_accelerometer[0]}.txt'))
         }
+        # generate file names for other accelerometer(s)
         old_path_tail = f'I{self.use_accelerometer[0]}.txt'
         for inertia_sensor_id in self.use_accelerometer[1:]:
             new_path_tail = f'I{inertia_sensor_id}.txt'
@@ -324,7 +345,7 @@ class CMDFallParquet(ParquetDatasetFormatter):
                 for path in session_files[first_inertia_name]
             ]
 
-        # scan skeleton files
+        # generate file names for skeleton files
         for kinect_id in self.use_kinect:
             new_path_tail = f'K{kinect_id}.txt'
             session_files[f'{CMDFallConst.MODAL_SKELETON}_{kinect_id}'] = [
@@ -343,6 +364,7 @@ class CMDFallParquet(ParquetDatasetFormatter):
             session_id, subject, sensor_id = self.get_info_from_session_file(session_row.iat[0])
             session_info = f'S{session_id}P{subject}'
 
+            # check if already run before
             if os.path.isfile(self.get_output_file_path(CMDFallConst.MODAL_INERTIA, subject, session_info)) \
                     and os.path.isfile(self.get_output_file_path(CMDFallConst.MODAL_SKELETON, subject, session_info)):
                 logger.info(f'Skipping session {session_info} because already run before')
@@ -352,10 +374,17 @@ class CMDFallParquet(ParquetDatasetFormatter):
 
             # get data
             data_segments = self.process_session(session_row.to_dict())
+            # get annotation DF
+            session_anno_df = self.anno_df.filter(pl.col('setup_id') == session_id)
+
+            # add label column and save each segment
             for i, segment in enumerate(data_segments):
                 this_session_info = f'{session_info}_{i}' if i < len(data_segments) - 1 else session_info
                 inertial_df = segment[CMDFallConst.MODAL_INERTIA]
                 skeleton_df = segment[CMDFallConst.MODAL_SKELETON]
+
+                # add label
+                skeleton_df, inertial_df = self.assign_label(skeleton_df, inertial_df, session_anno_df)
                 # write files
                 if self.write_output_parquet(inertial_df, CMDFallConst.MODAL_INERTIA, subject, this_session_info):
                     write_segment_files += 1
