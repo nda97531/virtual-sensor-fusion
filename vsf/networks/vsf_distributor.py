@@ -40,7 +40,7 @@ class OneSetDistributor(nn.Module):
         self.main_modal = main_modal
 
     def forward(self, x_dict: TensorDict, cls_mask: tr.Tensor = None, contrast_mask: tr.Tensor = None,
-                cal_loss: bool = True) -> tuple:
+                cal_contrast_loss: bool = True) -> tuple:
         """
         Run forward pass of the distributor
 
@@ -49,7 +49,7 @@ class OneSetDistributor(nn.Module):
                 samples with the same index in batches are of the same time T.
             cls_mask: indices within a batch of samples used for classification
             contrast_mask: indices within a batch of samples used for contrastive loss
-            cal_loss: whether to calculate contrastive loss. if False, return None instead of float TODO: rename
+            cal_contrast_loss: whether to calculate contrastive loss. if False, return None instead of float
 
         Returns:
             a tuple of 2 elements:
@@ -69,7 +69,7 @@ class OneSetDistributor(nn.Module):
             keys=list(self.classifiers.keys())
         )
 
-        if cal_loss:
+        if cal_contrast_loss:
             # features for contrastive loss
             contrast_features = tr.stack([
                 self.connect_fc[modal](x_dict.get(modal)[contrast_mask])

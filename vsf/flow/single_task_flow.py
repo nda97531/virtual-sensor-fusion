@@ -20,7 +20,7 @@ class SingleTaskFlow(BaseFlow):
 
             # Compute prediction and loss
             pred = self.model(x)
-            loss = self.loss_fn(pred, y)
+            loss = self.cls_loss_fn(pred, y)
 
             # Backpropagation
             self.optimizer.zero_grad()
@@ -50,7 +50,7 @@ class SingleTaskFlow(BaseFlow):
             x = self.tensor_to_device(x)
             y = y.to(self.device)
             pred = self.model(x)
-            valid_loss += self.loss_fn(pred, y).item()
+            valid_loss += self.cls_loss_fn(pred, y).item()
             y_true.append(y)
             y_pred.append(pred)
 
@@ -85,7 +85,7 @@ if __name__ == '__main__':
         model=None,
         optimizer=None,
         device='cuda:0',
-        loss_fn='classification_auto',
+        cls_loss_fn='classification_auto',
         callbacks=None
     )
     flow.run()

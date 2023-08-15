@@ -162,7 +162,7 @@ if __name__ == '__main__':
         optimizer = tr.optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
         model_file_path = f'{save_folder}/model.pth'
         flow = SingleTaskFlow(
-            model=model, loss_fn=loss_fn, optimizer=optimizer,
+            model=model, cls_loss_fn=loss_fn, optimizer=optimizer,
             device=args.device,
             callbacks=[
                 ModelCheckpoint(NUM_EPOCH, model_file_path, smaller_better=False),

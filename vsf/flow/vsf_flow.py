@@ -39,13 +39,13 @@ class VsfE2eFlow(BaseFlow):
             shuffle_idx = tr.randperm(len(cls_mask))
             cls_mask = cls_mask[shuffle_idx]
             x = {k: tr.cat([x_cls[k], x_contrast[k]])[shuffle_idx] for k in x_cls.keys()}
-            y = tr.cat([y_cls, tr.empty(size=[contrast_batch_size], dtype=tr.long)])[shuffle_idx]
+            y = tr.cat([y_cls, tr.empty(size=[contrast_batch_size], dtype=tr.long, device=self.device)])[shuffle_idx]
 
             # compute prediction
             cls_logit_dict, contrast_loss = self.model(x, head_kwargs={'cls_mask': cls_mask,
                                                                        'contrast_mask': ~cls_mask})
             y = y[cls_mask]
-            cls_loss = sum(self.loss_fn(cls_logit, y) for cls_logit in cls_logit_dict.values()) / len(cls_logit_dict)
+            cls_loss = sum(self.cls_loss_fn(logit, y) for logit in cls_logit_dict.values()) / len(cls_logit_dict)
             loss = cls_loss + contrast_loss
 
             # optimise
@@ -87,7 +87,7 @@ class VsfE2eFlow(BaseFlow):
             y = y.to(self.device)
             cls_logit_dict, _ = self.model(x, head_kwargs={'cls_mask': [True] * len(y),
                                                            'contrast_mask': []})
-            cls_loss = sum(self.loss_fn(cls_logit, y) for cls_logit in cls_logit_dict.values()) / len(cls_logit_dict)
+            cls_loss = sum(self.cls_loss_fn(logit, y) for logit in cls_logit_dict.values()) / len(cls_logit_dict)
 
             valid_cls_loss += cls_loss.item()
             y_true.append(y)
@@ -122,7 +122,7 @@ class VsfE2eFlow(BaseFlow):
         for x, y in dataloader:
             x = self.tensor_to_device(x)
             y = y.to(self.device)
-            class_logit_dict, _ = model(x, head_kwargs={'cal_loss': False, 'cls_mask': [True] * len(y)})
+            class_logit_dict, _ = model(x, head_kwargs={'cal_contrast_loss': False, 'cls_mask': [True] * len(y)})
             y_true.append(y)
             for modal in class_logit_dict.keys():
                 y_preds[modal].append(class_logit_dict.get(modal))
@@ -151,7 +151,7 @@ if __name__ == '__main__':
         model=None,
         optimizer=None,
         device='cuda:0',
-        loss_fn='classification_auto',
+        cls_loss_fn='classification_auto',
         callbacks=None
     )
     flow.run()

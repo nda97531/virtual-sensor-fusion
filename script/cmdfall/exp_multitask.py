@@ -171,13 +171,13 @@ if __name__ == '__main__':
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--device', '-d', default='cpu')
+    parser.add_argument('--device', '-d', default='cuda:0')
 
     parser.add_argument('--name', '-n', default='exp_vsf',
                         help='name of the experiment to create a folder to save weights')
 
     parser.add_argument('--data-folder', '-data',
-                        default='/mnt/data_drive/projects/UCD04 - Virtual sensor fusion/processed_parquet/CMDFall/',
+                        default='/home/ducanh/parquet_datasets/CMDFall/',
                         help='path to parquet data folder')
 
     parser.add_argument('--output-folder', '-o', default='./log/cmdfall',
@@ -200,7 +200,7 @@ if __name__ == '__main__':
     test_cls_dict = three_class_dicts['test']
     del three_class_dicts
 
-    three_unlabelled_dicts = load_unlabelled_data(parquet_dir=args.data_folder, window_size_sec=4, step_size_sec=2)
+    three_unlabelled_dicts = load_unlabelled_data(parquet_dir=args.data_folder, window_size_sec=4, step_size_sec=1)
     train_unlabelled_dict = three_unlabelled_dicts['train']
     valid_unlabelled_dict = three_unlabelled_dicts['valid']
     del three_unlabelled_dicts
@@ -232,8 +232,8 @@ if __name__ == '__main__':
         })
 
         head = OneSetDistributor(
-            input_dims={modal: 128 for modal in backbone.keys()},
-            num_classes={
+            input_dims={modal: 128 for modal in backbone.keys()},  # affect contrast loss order
+            num_classes={  # affect class logit order
                 'acc': len(train_cls_dict[list(train_cls_dict.keys())[0]]),
                 'ske': len(train_cls_dict[list(train_cls_dict.keys())[0]])
             },

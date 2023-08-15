@@ -15,7 +15,7 @@ class BaseFlow(ABC):
     def __init__(self, model: tr.nn.Module,
                  optimizer: tr.optim.Optimizer,
                  device: str,
-                 loss_fn: Union[tr.nn.Module, callable, list, str] = 'classification_auto',
+                 cls_loss_fn: Union[tr.nn.Module, callable, list, str] = 'classification_auto',
                  callbacks: List[TorchCallback] = None,
                  callback_criterion: str = 'loss'):
         """
@@ -25,14 +25,14 @@ class BaseFlow(ABC):
             model: model object
             optimizer: optimizer object
             device: hardware device to run, example: 'cpu', 'cuda:0', 'cuda:1'
-            loss_fn: classification loss function TODO: rename
+            cls_loss_fn: classification loss function
             callbacks: list of callback objects
             callback_criterion: criterion to run callback; for example: checkpoint with best 'loss' or 'f1-score', etc.
         """
         self.model = model.to(device)
         self.optimizer = optimizer
         self.device = device
-        self.loss_fn = auto_classification_loss if loss_fn == 'classification_auto' else loss_fn
+        self.cls_loss_fn = auto_classification_loss if cls_loss_fn == 'classification_auto' else cls_loss_fn
 
         self.train_log = []
         self.valid_log = []
