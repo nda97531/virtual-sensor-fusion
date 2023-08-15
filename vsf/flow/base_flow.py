@@ -25,7 +25,7 @@ class BaseFlow(ABC):
             model: model object
             optimizer: optimizer object
             device: hardware device to run, example: 'cpu', 'cuda:0', 'cuda:1'
-            loss_fn: classification loss function
+            loss_fn: classification loss function TODO: rename
             callbacks: list of callback objects
             callback_criterion: criterion to run callback; for example: checkpoint with best 'loss' or 'f1-score', etc.
         """
@@ -78,7 +78,7 @@ class BaseFlow(ABC):
         Run a training epoch. This function ensures that the model is switched to training mode
 
         Args:
-            dataloader: DataLoader object or a list of objects
+            dataloader: DataLoader object or a dict of objects
         """
         self.model = self.model.train()
         training_log = self._train_epoch(dataloader)
@@ -91,7 +91,7 @@ class BaseFlow(ABC):
         Run a training epoch.
 
         Args:
-            dataloader: DataLoader object or a list of objects
+            dataloader: DataLoader object or a dict of objects
 
         Returns:
             a dict of training log. Example: {'loss': 0.1, 'f1': 0.99, 'lr': 0.001}
@@ -103,7 +103,7 @@ class BaseFlow(ABC):
         Run a validation epoch. This function ensures that the model is switched to evaluation mode
 
         Args:
-            dataloader: DataLoader object or a list of objects
+            dataloader: DataLoader object or a dict of objects
         """
         self.model = self.model.eval()
         with tr.no_grad():
@@ -117,7 +117,7 @@ class BaseFlow(ABC):
         Run a validation epoch.
 
         Args:
-            dataloader: DataLoader object or a list of objects
+            dataloader: DataLoader object or a dict of objects
         """
         raise NotImplementedError
 
@@ -127,7 +127,7 @@ class BaseFlow(ABC):
         Run a test epoch.
 
         Args:
-            dataloader: DataLoader object or a list of objects
+            dataloader: DataLoader object or a dict of objects
             model: model used for testing
 
         Returns:
@@ -141,7 +141,7 @@ class BaseFlow(ABC):
         Run a test epoch. This function ensures that the model is switched to evaluation mode
 
         Args:
-            dataloader: DataLoader object or a list of objects
+            dataloader: DataLoader object or a dict of objects
             model_state_dict: if provided, load this state dict before testing (without changing `self.model`)
 
         Returns:

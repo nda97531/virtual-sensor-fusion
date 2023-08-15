@@ -39,14 +39,17 @@ class OneSetDistributor(nn.Module):
 
         self.main_modal = main_modal
 
-    def forward(self, x_dict: TensorDict, cal_loss: bool = True) -> tuple:
+    def forward(self, x_dict: TensorDict, cls_mask: tr.Tensor = None, contrast_mask: tr.Tensor = None,
+                cal_loss: bool = True) -> tuple:
         """
         Run forward pass of the distributor
 
         Args:
             x_dict: TensorDict, values shape [modal, batch size, feature], keys are modals
                 samples with the same index in batches are of the same time T.
-            cal_loss: whether to calculate contrastive loss. if False, return None instead of float
+            cls_mask: indices within a batch of samples used for classification
+            contrast_mask: indices within a batch of samples used for contrastive loss
+            cal_loss: whether to calculate contrastive loss. if False, return None instead of float TODO: rename
 
         Returns:
             a tuple of 2 elements:
@@ -54,17 +57,22 @@ class OneSetDistributor(nn.Module):
                     value tensor shape is [batch, num class]
                 - contrastive loss (pytorch float; None if `cal_loss` == False)
         """
+        if cls_mask is None:
+            cls_mask = tr.arange(len(x_dict.values()[0]))
+        if contrast_mask is None:
+            contrast_mask = tr.arange(len(x_dict.values()[0]))
+
         # classification (use tuple instead of TensorDict because each modal may have a different number of classes,
         # so tensors cannot be stacked)
         class_logits = TensorDict(
-            x=tuple(self.classifiers[modal](x_dict.get(modal)) for modal in self.classifiers.keys()),
+            x=tuple(self.classifiers[modal](x_dict.get(modal)[cls_mask]) for modal in self.classifiers.keys()),
             keys=list(self.classifiers.keys())
         )
 
         if cal_loss:
             # features for contrastive loss
             contrast_features = tr.stack([
-                self.connect_fc[modal](x_dict.get(modal))
+                self.connect_fc[modal](x_dict.get(modal)[contrast_mask])
                 for modal in self.connect_fc.keys()
             ])
             # calculate contrastive loss

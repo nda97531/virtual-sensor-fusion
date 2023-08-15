@@ -111,8 +111,8 @@ class ComposeAugmenters(Augmenter):
 
 
 class Rotation3D(Augmenter):
-    def __init__(self, angle_range: Union[list, tuple, float] = 180, separate_triaxial: bool = False,
-                 p: float = 1, random_seed: Union[int, None] = None) -> None:
+    def __init__(self, angle_range: Union[list, tuple, float] = 180, rot_axis: np.ndarray = None,
+                 separate_triaxial: bool = False, p: float = 1, random_seed: Union[int, None] = None) -> None:
         """
         Rotate tri-axial data in a random axis. This is for tri-axial inertial data.
 
@@ -120,6 +120,7 @@ class Rotation3D(Augmenter):
             angle_range: (degree) the angle is randomised within this range;
                 if this is a list, randomly pick an angle in this range;
                 if it's a float, the range is [-float, float]
+            rot_axis: rotation axis, an array with 3 element (x, y, z); default: random every run
             separate_triaxial: if True, use different random angles for each of the tri-axial sensor. For example, array
                 shape [n, 6] is 2 tri-axial sensors, each has 3 features.
             p: probability to apply this augmenter each time it is called
@@ -129,6 +130,7 @@ class Rotation3D(Augmenter):
 
         self.angle_range = format_range(angle_range, start_0=False) / 180 * np.pi
         self.separate_triaxial = separate_triaxial
+        self.rot_axis = rot_axis
 
     def _apply_logic(self, org_data: np.ndarray) -> np.ndarray:
         assert (len(org_data.shape) == 2) and (org_data.shape[1] % 3 == 0), \
@@ -137,17 +139,19 @@ class Rotation3D(Augmenter):
         if self.separate_triaxial:
             num_tri = org_data.shape[1] // 3
             angles = self.randomizer.uniform(low=self.angle_range[0], high=self.angle_range[1], size=num_tri)
-            direction_vectors = self.randomizer.uniform(-1, 1, size=[num_tri, 3])
+            direction_vectors = self.randomizer.uniform(-1, 1, size=[num_tri, 3]) \
+                if self.rot_axis is None else np.stack([self.rot_axis] * num_tri)
 
             # transpose data to shape [channel, time step]
             data = org_data.T
 
             # for every 3 channels
-            for i in range(0, data.shape[0], 3):
-                data[i:i + 3] = self.rotate(data[i:i + 3], angles[i], direction_vectors[i])
+            for ith, i in enumerate(range(0, data.shape[0], 3)):
+                data[i:i + 3] = self.rotate(data[i:i + 3], angles[ith], direction_vectors[ith])
         else:
             angle = self.randomizer.uniform(low=self.angle_range[0], high=self.angle_range[1])
-            direction_vector = self.randomizer.uniform(-1, 1, size=3)
+            direction_vector = self.randomizer.uniform(-1, 1, size=3) \
+                if self.rot_axis is None else self.rot_axis
 
             # transpose data to shape [channel, time step]
             data = org_data.T
@@ -247,3 +251,21 @@ class TimeWarp(Augmenter):
             np.interp(x_range, tt_new, org_data[:, i]) for i in range(org_data.shape[-1])
         ]).T
         return data
+
+
+class Scale(Augmenter):
+    def __init__(self, scale_range: tuple, p: float = 1, random_seed: Union[int, None] = None):
+        """
+        Multiply the whole data with a scalar
+
+        Args:
+            scale_range: a scalar between this range will be generated every run
+        """
+        super().__init__(p, random_seed)
+        assert len(scale_range) == 2, 'Wrong argument format; expected a tuple of 2 elements.'
+        self.scale_range = scale_range
+
+    def _apply_logic(self, org_data: np.ndarray) -> np.ndarray:
+        scale = np.random.uniform(*self.scale_range)
+        org_data *= scale
+        return org_data

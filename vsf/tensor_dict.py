@@ -6,7 +6,7 @@ import torch as tr
 class TensorDict:
     def __init__(self, x: Union[tr.Tensor, tuple], keys: list):
         """
-        Simulate a dictionary of pytorch tensors, which support back prop
+        Simulate a dictionary of pytorch tensors
 
         Args:
             x: a tensor shape [N, ...] or a tuple of N tensors
@@ -25,3 +25,6 @@ class TensorDict:
 
     def keys(self):
         return self.dict_keys
+
+    def __len__(self):
+        return len(self.dict_keys)

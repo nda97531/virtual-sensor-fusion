@@ -87,8 +87,8 @@ class ParquetDatasetFormatter:
 
 class NpyWindowFormatter:
     def __init__(self, parquet_root_dir: str,
-                 window_size_sec: float, step_size_sec: float, min_step_size_sec: float,
-                 max_short_window: int = 3,
+                 window_size_sec: float, step_size_sec: float,
+                 min_step_size_sec: float = None, max_short_window: int = None,
                  modal_cols: dict = None):
         """
         This class takes result of `ParquetDatasetFormatter`, run sliding window and return as numpy array.
@@ -341,7 +341,6 @@ class NpyWindowFormatter:
         for modal_label in modal_labels[1:]:
             diff_lb = modal_label[:min_num_windows] != modal_labels[0][:min_num_windows]
             if diff_lb.any():
-                logger.warning(f'Different labels between modals: {diff_lb.sum()}/{min_num_windows}')
                 modal_labels[0][:min_num_windows] = np.maximum(modal_labels[0][:min_num_windows],
                                                                modal_label[:min_num_windows])
         # add label info

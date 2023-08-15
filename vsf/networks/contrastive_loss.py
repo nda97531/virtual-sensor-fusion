@@ -22,9 +22,9 @@ def info_nce_loss(modal1: tr.Tensor, modal2: tr.Tensor, temp: float = 1, norm2_e
     # tensor shape [batch, batch]
     sim = tr.matmul(modal1, modal2.permute([1, 0]))
     if norm2_eps > 0:
-        length1 = (modal1 ** 2).sum(dim=-1, keepdims=True)
-        length2 = (modal2 ** 2).sum(dim=-1, keepdims=True)
-        sim /= tr.matmul(length1, length2.permute([1, 0]))
+        length1 = tr.sqrt((modal1 ** 2).sum(dim=-1, keepdims=True))
+        length2 = tr.sqrt((modal2 ** 2).sum(dim=-1, keepdims=True))
+        sim /= tr.maximum(tr.matmul(length1, length2.permute([1, 0])), tr.tensor(norm2_eps))
     sim = sim / temp
     # create positive idx tensor on the same device as `sim`
     positive_pair_idx = sim.new(np.arange(sim.shape[0])).long()
@@ -96,13 +96,13 @@ class CocoaLoss(ContrastiveLoss):
         """
         super().__init__(*args, **kwargs)
         self.temp = temp
-        self.eps = norm2_eps
+        self.eps = tr.tensor(norm2_eps)
 
     def forward(self, all_features: tr.Tensor):
         assert len(all_features) > 1, 'At least 2 modals are required for contrastive loss'
         assert all_features.shape[1] > 1, 'At least 2 batch items are required for contrastive loss'
         num_modal, batch_size, n_channel = all_features.shape
-        feature_norm2 = tr.sqrt((all_features ** 2).sum(dim=-1, keepdims=True)) + self.eps
+        feature_norm2 = tr.maximum(tr.sqrt((all_features ** 2).sum(dim=-1, keepdims=True)), self.eps)
 
         # Positive pairs
         # similarity between all pairs of modals for each batch, shape [batch, modal, modal]
@@ -151,14 +151,14 @@ class Cocoa2Loss(ContrastiveLoss):
         """
         super().__init__(*args, **kwargs)
         self.temp = temp
-        self.eps = norm2_eps
+        self.eps = tr.tensor(norm2_eps)
         self.scale_loss = scale_loss
         self.lambda_ = lambda_
 
     def forward(self, all_features: tr.Tensor):
         assert len(all_features) > 1, 'At least 2 modals are required for contrastive loss'
         num_modal, batch_size, n_channel = all_features.shape
-        feature_norm2 = tr.sqrt((all_features ** 2).sum(dim=-1, keepdims=True)) + self.eps
+        feature_norm2 = tr.maximum(tr.sqrt((all_features ** 2).sum(dim=-1, keepdims=True)), self.eps)
 
         # # positive pairs
         # # [batch size, modal, modal]

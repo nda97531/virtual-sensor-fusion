@@ -3,6 +3,7 @@ from typing import Dict
 import torch as tr
 import torch.nn as nn
 
+from vsf.networks.vsf_distributor import OneSetDistributor
 from vsf.tensor_dict import TensorDict
 
 
@@ -90,7 +91,7 @@ class FusionClsModel(nn.Module):
 
 
 class VSFModel(nn.Module):
-    def __init__(self, backbones: nn.ModuleDict, distributor_head: nn.Module,
+    def __init__(self, backbones: nn.ModuleDict, distributor_head: OneSetDistributor,
                  dropout: float = 0.5) -> None:
         """
         A feature-level fusion model that concatenates features of backbones before the classifier

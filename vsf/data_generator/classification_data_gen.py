@@ -158,8 +158,9 @@ class FusionDataset(Dataset):
             labels = check_label_key(modal_dict)
 
             # validate modal names of data and augmenter dicts
-            if (augmenter is not None) and (modal_name not in augmenter):
+            if (augmenter is not None) and ((modal_name not in augmenter) or (augmenter[modal_name] is None)):
                 logger.info(f'No Augmenter provided for {modal_name}')
+                augmenter[modal_name] = None
 
         # check label count of all modals
         count_check = None
@@ -178,9 +179,9 @@ class FusionDataset(Dataset):
         # get data
         data = {modal: arr[index] for modal, arr in self.data.items()}
         if self.augmenters is not None:
-            for modal, window in data.items():
+            for modal, windows in data.items():
                 if self.augmenters[modal] is not None:
-                    data[modal] = self.augmenters[modal].run(window)
+                    data[modal] = self.augmenters[modal].run(windows)
         # get label
         label = self.label[index]
         # convert dtype
@@ -231,9 +232,9 @@ class BalancedFusionDataset(Dataset):
                 for modal, modal_data in self.label_data_dict.items()}
         # augment
         if self.augmenters is not None:
-            for modal, window in data.items():
+            for modal, windows in data.items():
                 if self.augmenters[modal] is not None:
-                    data[modal] = self.augmenters[modal].run(window)
+                    data[modal] = self.augmenters[modal].run(windows)
         # update class pick index
         self.label_pick_idx[label] += 1
         # if reach epoch end of this class
