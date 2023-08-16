@@ -1,6 +1,6 @@
 """
 Single task: classification of all labels
-Single sensor: belt accelerometer
+Single sensor: wrist accelerometer
 """
 
 import itertools
@@ -49,7 +49,7 @@ def load_data(parquet_dir: str, window_size_sec=4, step_size_sec=2, min_step_siz
         max_short_window=max_short_window,
         modal_cols={
             UPFallConst.MODAL_INERTIA: {
-                'belt_acc': ['belt_acc_x(m/s^2)', 'belt_acc_y(m/s^2)', 'belt_acc_z(m/s^2)']
+                'wrist_acc': ['wrist_acc_x(m/s^2)', 'wrist_acc_y(m/s^2)', 'wrist_acc_z(m/s^2)']
             }
         }
     )
@@ -81,7 +81,7 @@ def load_data(parquet_dir: str, window_size_sec=4, step_size_sec=2, min_step_siz
         class_dict = defaultdict(dict)
         for label_idx, label_val in enumerate(label_list):
             idx = modal_dict['label'] == label_val
-            class_dict['belt_acc'][label_idx] = modal_dict['belt_acc'][idx]
+            class_dict['wrist_acc'][label_idx] = modal_dict['wrist_acc'][idx]
         class_dict = dict(class_dict)
 
         assert list(class_dict.keys()) == list_sub_modal, 'Mismatched submodal list'
@@ -122,9 +122,9 @@ if __name__ == '__main__':
 
     # load data
     three_dicts = load_data(parquet_dir=args.data_folder)
-    train_dict = three_dicts['train']['belt_acc']
-    valid_dict = three_dicts['valid']['belt_acc']
-    test_dict = three_dicts['test']['belt_acc']
+    train_dict = three_dicts['train']['wrist_acc']
+    valid_dict = three_dicts['valid']['wrist_acc']
+    test_dict = three_dicts['test']['wrist_acc']
     del three_dicts
 
     test_scores = []

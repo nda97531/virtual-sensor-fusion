@@ -64,7 +64,7 @@ class UPFallConst:
     ))
     SELECTED_SKELETON_COLS = ['timestamp(ms)'] + list(itertools.chain.from_iterable(
         [f'x_{joint}', f'y_{joint}'] for joint in
-        ["Neck", "RElbow", "LElbow", "RWrist", "LWrist", "MidHip", "RKnee", "LKnee", "RAnkle", "LAnkle"]
+        ["Neck", "RElbow", "LElbow", "RWrist", "LWrist", "RKnee", "LKnee", "RAnkle", "LAnkle"]
     ))
 
     # columns used for skeleton normalisation

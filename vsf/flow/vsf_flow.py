@@ -14,6 +14,8 @@ from vsf.flow.flow_functions import f1_score_from_prob
 class VsfE2eFlow(BaseFlow):
     def _train_epoch(self, dataloader: Dict[str, DataLoader]) -> dict:
         num_iter = min(len(dl) for dl in dataloader.values())
+        cls_batch_size = dataloader['cls'].batch_size
+        contrast_batch_size = dataloader['contrast'].batch_size
         dataloader = {k: iter(dl) for k, dl in dataloader.items()}
 
         train_cls_loss = 0
@@ -26,8 +28,6 @@ class VsfE2eFlow(BaseFlow):
             batch_data = {k: next(dl) for k, dl in dataloader.items()}
             x_cls, y_cls = batch_data['cls']
             x_contrast = batch_data['contrast']
-            cls_batch_size = len(next(iter(x_cls.values())))
-            contrast_batch_size = len(next(iter(x_contrast.values())))
             # send data to gpu
             x_cls = self.tensor_to_device(x_cls)
             y_cls = y_cls.to(self.device)

@@ -26,8 +26,6 @@ from vsf.networks.backbone_tcn import TCN
 from vsf.networks.complete_model import VSFModel
 from vsf.networks.vsf_distributor import OneSetDistributor
 from vsf.networks.contrastive_loss import CMCLoss, CocoaLoss, Cocoa2Loss
-from vsf.networks.classifier import BasicClassifier
-from vsf.networks.complete_model import BasicClsModel
 from vsf.public_datasets.cmd_fall_dataset import CMDFallNpyWindow, CMDFallConst
 
 

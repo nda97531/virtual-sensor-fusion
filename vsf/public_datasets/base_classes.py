@@ -266,7 +266,7 @@ class NpyWindowFormatter:
 
         # list of sub-modals within the DF
         sub_modals_col_idx = self.modal_cols[modality].copy()
-        # get column index for each sub-modal
+        # get column index from column name for each sub-modal (later used for picking columns in np array)
         for k, v in sub_modals_col_idx.items():
             if v is None:
                 # get all feature cols by default
@@ -293,7 +293,7 @@ class NpyWindowFormatter:
     def process_parquet_to_windows(self, parquet_session: dict, subject: any, session_label: int = None,
                                    is_short_activity: bool = False):
         """
-        Process from parquet files for modals to window data (np array). All parquet files are of ONE session.
+        Process from parquet files to window data (np array). Each parquet file is a modal from ONE session.
 
         Args:
             parquet_session: dict with keys are modal names, values are parquet file paths
@@ -343,7 +343,7 @@ class NpyWindowFormatter:
             if diff_lb.any():
                 modal_labels[0][:min_num_windows] = np.maximum(modal_labels[0][:min_num_windows],
                                                                modal_label[:min_num_windows])
-        # add label info
+        # add label info; only need to take labels of the first modal because all modalities have the same labels
         session_result['label'] = modal_labels[0][:min_num_windows]
 
         # only print column names for 1 session
