@@ -1,7 +1,7 @@
 """
 Exp 1.1
 Single task: classification of all labels
-Single sensor: wrist accelerometer
+Single sensor: rankle accelerometer
 """
 
 import itertools
@@ -23,7 +23,7 @@ from vsf.flow.torch_callbacks import ModelCheckpoint, EarlyStop
 from vsf.networks.backbone_tcn import TCN
 from vsf.networks.classifier import BasicClassifier
 from vsf.networks.complete_model import BasicClsModel
-from vsf.public_datasets.up_fall_dataset import UPFallNpyWindow, UPFallConst
+from vsf.public_datasets.sfu_imu_dataset import SFUNpyWindow, SFUConst
 
 
 def load_data(parquet_dir: str, window_size_sec=4, step_size_sec=2, min_step_size_sec=0.5,
@@ -42,58 +42,66 @@ def load_data(parquet_dir: str, window_size_sec=4, step_size_sec=2, min_step_siz
         a 3-level dict:
             dict[train/valid/test][submodal name][label index] = windows array shape [n, ..., channel]
     """
-    upfall = UPFallNpyWindow(
+    npy_loader = SFUNpyWindow(
         parquet_root_dir=parquet_dir,
         window_size_sec=window_size_sec,
         step_size_sec=step_size_sec,
         min_step_size_sec=min_step_size_sec,
         max_short_window=max_short_window,
         modal_cols={
-            UPFallConst.MODAL_INERTIA: {
-                'wrist_acc': ['wrist_acc_x(m/s^2)', 'wrist_acc_y(m/s^2)', 'wrist_acc_z(m/s^2)']
+            SFUConst.MODAL: {
+                'rankle_acc': [f'rankle_acc_{axis}(m/s^2)' for axis in ['x', 'y', 'z']]
             }
         }
     )
-    df = upfall.run()
-    list_sub_modal = list(itertools.chain.from_iterable(list(sub_dict) for sub_dict in upfall.modal_cols.values()))
+    df = npy_loader.run()
+    list_sub_modal = list(itertools.chain.from_iterable(list(sub_dict) for sub_dict in npy_loader.modal_cols.values()))
 
     # split TRAIN, VALID, TEST
-    # 1/3 subjects as test set
-    test_set_idx = df['subject'] % 3 == 0
-    test_set = df.loc[test_set_idx]
-    # trial 3 of 2/3 subjects as valid set
-    valid_set_idx = (~test_set_idx) & (df['trial'] == 3)
-    valid_set = df.loc[valid_set_idx]
-    # trial 1 and 2 of 2/3 subjects as train set
-    train_set_idx = ~(test_set_idx | valid_set_idx)
+    assert np.unique(df['subject']).tolist() == list(range(1, 11))
+    train_subject = {1}
+    test_subject = {3, 5, 7, 9, 10}
+    valid_subject = {2, 4, 6, 8}
+
+    train_set_idx = df['subject'].isin(train_subject)
+    valid_set_idx = df['subject'].isin(valid_subject)
+    assert not (train_set_idx & valid_set_idx).any(), 'Train and valid overlapped'
+    test_set_idx = ~(train_set_idx | valid_set_idx)
+
+    # randomizer = np.random.default_rng(99)
+    # random_idx = randomizer.permutation(len(df))
+    # assert len(random_idx) == 600
+    # train_set_idx = random_idx[:250]
+    # valid_set_idx = random_idx[250:350]
+    # test_set_idx = random_idx[350:600]
+
     train_set = df.loc[train_set_idx]
+    valid_set = df.loc[valid_set_idx]
+    test_set = df.loc[test_set_idx]
 
     def concat_data_in_df(df):
         # concat sessions in cells into an array
         modal_dict = {}
         for col in df.columns:
-            if col not in {'subject', 'trial'}:
+            if col != 'subject':
                 col_data = df[col].tolist()
                 modal_dict[col] = np.concatenate(col_data)
 
-        # construct dict with classes are keys
-        label_list = np.unique(modal_dict['label'])
-        # dict[modal][label index] = window array
         class_dict = defaultdict(dict)
-        for label_idx, label_val in enumerate(label_list):
-            idx = modal_dict['label'] == label_val
-            class_dict['wrist_acc'][label_idx] = modal_dict['wrist_acc'][idx]
-        class_dict = dict(class_dict)
+        for sub_modal in list_sub_modal:
+            for label in [0, 1]:
+                idx = modal_dict['label'] == label
+                class_dict[sub_modal][label] = modal_dict[sub_modal][idx]
 
         assert list(class_dict.keys()) == list_sub_modal, 'Mismatched submodal list'
         return class_dict
 
-    results = {
+    three_dicts = {
         'train': concat_data_in_df(train_set),
         'valid': concat_data_in_df(valid_set),
         'test': concat_data_in_df(test_set)
     }
-    return results
+    return three_dicts
 
 
 if __name__ == '__main__':
@@ -106,26 +114,26 @@ if __name__ == '__main__':
                         help='name of the experiment to create a folder to save weights')
 
     parser.add_argument('--data-folder', '-data',
-                        default='/mnt/data_drive/projects/UCD04 - Virtual sensor fusion/processed_parquet/UP-Fall',
+                        default='/mnt/data_drive/projects/UCD04 - Virtual sensor fusion/processed_parquet/SFU-IMU',
                         help='path to parquet data folder')
 
-    parser.add_argument('--output-folder', '-o', default='./log',
+    parser.add_argument('--output-folder', '-o', default='./log/sfu',
                         help='path to save training logs and model weights')
     args = parser.parse_args()
 
     NUM_REPEAT = 3
     NUM_EPOCH = 300
-    LEARNING_RATE = 1e-2
-    WEIGHT_DECAY = 1e-3
+    LEARNING_RATE = 1e-3
+    WEIGHT_DECAY = 1e-2
     EARLY_STOP_PATIENCE = 30
     LR_SCHEDULER_PATIENCE = 15
     TRAIN_BATCH_SIZE = 16
 
     # load data
     three_dicts = load_data(parquet_dir=args.data_folder)
-    train_dict = three_dicts['train']['wrist_acc']
-    valid_dict = three_dicts['valid']['wrist_acc']
-    test_dict = three_dicts['test']['wrist_acc']
+    train_dict = three_dicts['train']['rankle_acc']
+    valid_dict = three_dicts['valid']['rankle_acc']
+    test_dict = three_dicts['test']['rankle_acc']
     del three_dicts
 
     test_scores = []
@@ -156,10 +164,10 @@ if __name__ == '__main__':
 
         # create training config
         loss_fn = 'classification_auto'
-        optimizer = tr.optim.SGD(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY, momentum=0.9)
-        model_file_path = f'{save_folder}/single_task.pth'
+        optimizer = tr.optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
+        model_file_path = f'{save_folder}/model.pth'
         flow = SingleTaskFlow(
-            model=model, cls_loss_fn=loss_fn, optimizer=optimizer,
+            model=model, loss_fn=loss_fn, optimizer=optimizer,
             device=args.device,
             callbacks=[
                 ModelCheckpoint(NUM_EPOCH, model_file_path),

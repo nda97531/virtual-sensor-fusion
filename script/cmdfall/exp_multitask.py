@@ -273,6 +273,11 @@ if __name__ == '__main__':
         }
         train_set_cls = BalancedFusionDataset(deepcopy(train_cls_dict), augmenters=augmenter)
         valid_set_cls = FusionDataset(deepcopy(valid_cls_dict))
+        
+        augmenter = {
+            'acc': Rotation3D(angle_range=180, separate_triaxial=True),
+            'ske': Rotation3D(angle_range=180, rot_axis=np.array([0, 0, 1]))
+        }
         train_set_unlabelled = UnlabelledFusionDataset(deepcopy(train_unlabelled_dict), augmenters=augmenter)
         valid_set_unlabelled = UnlabelledFusionDataset(deepcopy(valid_unlabelled_dict))
 
