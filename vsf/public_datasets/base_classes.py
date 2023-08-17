@@ -1,13 +1,12 @@
 import os
 import re
 from glob import glob
-
+from typing import Tuple
 import numpy as np
 import pandas as pd
 import polars as pl
 from loguru import logger
 from scipy.stats import mode
-
 from vsf.utils.sliding_window import shifting_window, sliding_window
 from vsf.utils.string_utils import rreplace
 
@@ -187,7 +186,7 @@ class NpyWindowFormatter:
         parquet_files = pl.DataFrame(result)
         return parquet_files
 
-    def get_parquet_session_info(self, parquet_path: str):
+    def get_parquet_session_info(self, parquet_path: str) -> Tuple[str, ...]:
         """
         Get session info from parquet file path
 
@@ -291,7 +290,7 @@ class NpyWindowFormatter:
         return result
 
     def process_parquet_to_windows(self, parquet_session: dict, subject: any, session_label: int = None,
-                                   is_short_activity: bool = False):
+                                   is_short_activity: bool = False) -> dict:
         """
         Process from parquet files to window data (np array). Each parquet file is a modal from ONE session.
 
