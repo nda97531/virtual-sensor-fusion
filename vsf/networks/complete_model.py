@@ -3,8 +3,7 @@ from typing import Dict
 import torch as tr
 import torch.nn as nn
 
-from vsf.networks.vsf_distributor import OneSetDistributor
-from vsf.tensor_dict import TensorDict
+from vsf.networks.vsf_distributor import VsfDistributor
 
 
 class BasicClsModel(nn.Module):
@@ -90,8 +89,8 @@ class FusionClsModel(nn.Module):
         return x
 
 
-class VSFModel(nn.Module):
-    def __init__(self, backbones: nn.ModuleDict, distributor_head: OneSetDistributor,
+class VsfModel(nn.Module):
+    def __init__(self, backbones: nn.ModuleDict, distributor_head: VsfDistributor,
                  dropout: float = 0.5) -> None:
         """
         A feature-level fusion model that concatenates features of backbones before the classifier
@@ -115,17 +114,14 @@ class VSFModel(nn.Module):
 
         Returns:
             a tuple of 2 elements:
-                - a TensorDict, keys are modal names, values are class logits predicted from that modal,
+                - a dict, keys are modal names, values are class logits predicted from that modal,
                     value tensor shape is [batch, num class]
                 - contrastive loss (pytorch float)
         """
-        x_dict = TensorDict(
-            x=tr.stack([
-                self.dropout(self.backbones[modal](tr.permute(x_dict[modal], [0, 2, 1]), **backbone_kwargs))
-                for modal in self.backbones.keys()
-            ]),
-            keys=list(self.backbones.keys())
-        )
+        x_dict = {
+            modal: self.dropout(self.backbones[modal](tr.permute(x_dict[modal], [0, 2, 1]), **backbone_kwargs))
+            for modal in self.backbones.keys()
+        }
         # dict[modal] = [batch, channel]
 
         class_logits, contrast_loss = self.distributor(x_dict, **head_kwargs)

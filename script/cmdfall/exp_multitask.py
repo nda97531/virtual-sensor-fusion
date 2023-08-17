@@ -23,8 +23,8 @@ from vsf.data_generator.unlabelled_data_gen import UnlabelledFusionDataset
 from vsf.flow.torch_callbacks import ModelCheckpoint, EarlyStop
 from vsf.flow.vsf_flow import VsfE2eFlow
 from vsf.networks.backbone_tcn import TCN
-from vsf.networks.complete_model import VSFModel
-from vsf.networks.vsf_distributor import OneSetDistributor
+from vsf.networks.complete_model import VsfModel
+from vsf.networks.vsf_distributor import VsfDistributor
 from vsf.networks.contrastive_loss import CMCLoss, CocoaLoss, Cocoa2Loss
 from vsf.public_datasets.cmd_fall_dataset import CMDFallNpyWindow, CMDFallConst
 
@@ -229,7 +229,7 @@ if __name__ == '__main__':
             )
         })
 
-        head = OneSetDistributor(
+        head = VsfDistributor(
             input_dims={modal: 128 for modal in backbone.keys()},  # affect contrast loss order
             num_classes={  # affect class logit order
                 'acc': len(train_cls_dict[list(train_cls_dict.keys())[0]]),
@@ -238,7 +238,7 @@ if __name__ == '__main__':
             contrastive_loss_func=CMCLoss(temp=0.1),
             contrast_feature_dim=None,
         )
-        model = VSFModel(
+        model = VsfModel(
             backbones=backbone,
             distributor_head=head,
             dropout=0.5

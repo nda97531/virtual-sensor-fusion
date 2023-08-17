@@ -23,8 +23,8 @@ from vsf.data_generator.classification_data_gen import FusionDataset, BalancedFu
 from vsf.flow.torch_callbacks import ModelCheckpoint, EarlyStop
 from vsf.flow.vsf_flow import VSFFlow
 from vsf.networks.backbone_tcn import TCN
-from vsf.networks.complete_model import VSFModel
-from vsf.networks.vsf_distributor import OneSetDistributor
+from vsf.networks.complete_model import VsfModel
+from vsf.networks.vsf_distributor import VsfDistributor
 from vsf.public_datasets.up_fall_dataset import UPFallNpyWindow, UPFallConst
 from vsf.networks.contrastive_loss import CMCLoss, CocoaLoss, Cocoa2Loss
 from vsf.networks.classifier import BasicClassifier
@@ -185,7 +185,7 @@ if __name__ == '__main__':
             'skeleton': get_trained_ske(args.ske_weight)
         })
 
-        head = OneSetDistributor(
+        head = VsfDistributor(
             input_dims={modal: 128 for modal in backbone.keys()},
             num_classes={
                 'wrist_acc': len(train_dict[list(train_dict.keys())[0]])
@@ -193,7 +193,7 @@ if __name__ == '__main__':
             contrastive_loss_func=CocoaLoss(temp=0.1),
             contrast_feature_dim=None,
         )
-        model = VSFModel(
+        model = VsfModel(
             backbones=backbone,
             distributor_head=head,
             dropout=0.5

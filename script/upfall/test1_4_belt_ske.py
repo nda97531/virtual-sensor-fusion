@@ -23,8 +23,8 @@ from vsf.data_generator.classification_data_gen import FusionDataset, BalancedFu
 from vsf.flow.torch_callbacks import ModelCheckpoint, EarlyStop
 from vsf.flow.vsf_flow import VSFFlow
 from vsf.networks.backbone_tcn import TCN
-from vsf.networks.complete_model import VSFModel
-from vsf.networks.vsf_distributor import OneSetDistributor
+from vsf.networks.complete_model import VsfModel
+from vsf.networks.vsf_distributor import VsfDistributor
 from vsf.public_datasets.up_fall_dataset import UPFallNpyWindow, UPFallConst
 from vsf.networks.contrastive_loss import CMCLoss, CocoaLoss, Cocoa2Loss
 
@@ -163,7 +163,7 @@ if __name__ == '__main__':
                 attention_conv_norm=''
             )
         })
-        head = OneSetDistributor(
+        head = VsfDistributor(
             input_dims={modal: 128 for modal in backbone.keys()},
             contrast_feature_dim=128,
             num_classes={
@@ -172,7 +172,7 @@ if __name__ == '__main__':
             },
             contrastive_loss_func=CocoaLoss(temp=0.1)
         )
-        model = VSFModel(
+        model = VsfModel(
             backbones=backbone,
             distributor_head=head,
             dropout=0.5
