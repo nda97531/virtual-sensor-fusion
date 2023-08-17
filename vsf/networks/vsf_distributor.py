@@ -1,10 +1,9 @@
 """
 VSF distributor receives features from backbone models, run additional layers if necessary, and calculate losses
 """
-
+from typing import Union
 import torch as tr
 import torch.nn as nn
-
 from vsf.networks.contrastive_loss import ContrastiveLoss
 
 
@@ -38,17 +37,17 @@ class VsfDistributor(nn.Module):
 
         self.main_modal = main_modal
 
-    def forward(self, x_dict: dict, cls_mask: tr.Tensor = None, contrast_mask: tr.Tensor = None,
-                cal_contrast_loss: bool = True) -> tuple:
+    def forward(self, x_dict: dict,
+                cls_mask: Union[dict, str] = 'all', contrast_mask: Union[dict, str] = 'all') -> tuple:
         """
         Run forward pass of the distributor
 
         Args:
             x_dict: dict, keys are modals, values shape [batch size, feature],
                 samples with the same index in batches are of the same time T.
-            cls_mask: indices within a batch of samples used for classification
-            contrast_mask: indices within a batch of samples used for contrastive loss
-            cal_contrast_loss: whether to calculate contrastive loss. if False, return None instead of float
+            cls_mask: dict[modal] = indices within a batch of samples used for classification;
+                besides Tensor mask, string values [all|none] are acceptable
+            contrast_mask: same as `cls_mask` but for contrastive loss
 
         Returns:
             a tuple of 2 elements:
@@ -56,27 +55,28 @@ class VsfDistributor(nn.Module):
                     value tensor shape is [batch, num class]
                 - contrastive loss (pytorch float; None if `cal_loss` == False)
         """
-        batch_size = len(next(iter(x_dict.values())))
-        if cls_mask is None:
-            cls_mask = tr.arange(batch_size)
-        if contrast_mask is None:
-            contrast_mask = tr.arange(batch_size)
-
         # classification
-        class_logits = {
-            modal: self.classifiers[modal](x_dict[modal][cls_mask]) for modal in self.classifiers.keys()
-        }
+        if cls_mask == 'all':
+            cls_mask = {modal: tr.tensor([True] * len(x_dict[modal]))
+                        for modal in x_dict.keys()}
+        if cls_mask != 'none':
+            class_logit = {modal: self.classifiers[modal](x_dict[modal][cls_mask[modal]])
+                           for modal in self.classifiers.keys()}
+        else:
+            class_logit = None
 
-        if cal_contrast_loss:
+        # contrastive
+        if contrast_mask == 'all':
+            contrast_mask = {modal: tr.tensor([True] * len(x_dict[modal]))
+                             for modal in x_dict.keys()}
+        if contrast_mask != 'none':
             # features for contrastive loss
-            contrast_features = tr.stack([
-                self.connect_fc[modal](x_dict[modal][contrast_mask])
-                for modal in self.connect_fc.keys()
-            ])
+            contrast_features = tr.stack([self.connect_fc[modal](x_dict[modal][contrast_mask[modal]])
+                                          for modal in self.connect_fc.keys()])
             # calculate contrastive loss
             contrast_loss = self.contrastive_loss_func(contrast_features)
         else:
             contrast_loss = None
 
         # [batch, channel]
-        return class_logits, contrast_loss
+        return class_logit, contrast_loss

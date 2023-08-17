@@ -11,11 +11,60 @@ from vsf.flow.base_flow import BaseFlow
 from vsf.flow.flow_functions import f1_score_from_prob
 
 
+def mix_batch(x_cls: dict, y_cls: tr.Tensor, x_contrast: dict) -> tuple:
+    """
+    Concatenate data for classification and contrastive learning together; then shuffle them.
+
+    Args:
+        x_cls: dict[modal] = data tensor; all modals have the same batch size
+        y_cls: classification label tensor, length = x_cls batch size
+        x_contrast: dict[modal] = data tensor; all modals have the same batch size
+
+    Returns:
+        - dict[modal] = data tensor; new batch size = cls batch size + contrast batch size;
+            bs of each modal is different because some modals are not used for all tasks
+        - mask cls dict, same, format as the dict above
+        - mask contrast dict, same, format as the dict above
+        - classification label tensor
+    """
+    # batch size of classification and contrastive learning data
+    bs_cls = len(y_cls)
+    bs_contrast = len(next(iter(x_contrast.values())))
+
+    # create random index to shuffle data and label
+    shuffle_idx = tr.randperm(bs_cls + bs_contrast)
+    # first half in the index array is for classification
+    cls_idx_condition = shuffle_idx < bs_cls
+    cls_shuffle_idx = shuffle_idx[cls_idx_condition]
+    contrast_shuffle_idx = shuffle_idx[~cls_idx_condition] - bs_cls
+
+    x_dict = {}
+    cls_mask = {}
+    contrast_mask = {}
+    # create mask and shuffle data and mask for each modal
+    for modal in (x_cls.keys() | x_contrast.keys()):
+        if modal not in x_cls.keys():
+            cls_mask[modal] = tr.tensor([False] * bs_contrast)
+            x_dict[modal] = x_contrast[modal][contrast_shuffle_idx]
+
+        elif modal not in x_contrast.keys():
+            cls_mask[modal] = tr.tensor([True] * bs_cls)
+            x_dict[modal] = x_cls[modal][cls_shuffle_idx]
+
+        else:
+            # put cls first when concatenating
+            cls_mask[modal] = tr.tensor([True] * bs_cls + [False] * bs_contrast)[shuffle_idx]
+            x_dict[modal] = tr.cat([x_cls[modal], x_contrast[modal]])[shuffle_idx]
+
+        contrast_mask[modal] = ~cls_mask[modal]
+    # shuffle cls label
+    y_cls = y_cls[cls_shuffle_idx]
+    return x_dict, cls_mask, contrast_mask, y_cls
+
+
 class VsfE2eFlow(BaseFlow):
     def _train_epoch(self, dataloader: Dict[str, DataLoader]) -> dict:
         num_iter = min(len(dl) for dl in dataloader.values())
-        cls_batch_size = dataloader['cls'].batch_size
-        contrast_batch_size = dataloader['contrast'].batch_size
         dataloader = {k: iter(dl) for k, dl in dataloader.items()}
 
         train_cls_loss = 0
@@ -33,19 +82,14 @@ class VsfE2eFlow(BaseFlow):
             y_cls = y_cls.to(self.device)
             x_contrast = self.tensor_to_device(x_contrast)
 
-            # concatenate cls data and contrast data into 1 batch
-            # and shuffle batch
-            cls_mask = tr.tensor([True] * cls_batch_size + [False] * contrast_batch_size)
-            shuffle_idx = tr.randperm(len(cls_mask))
-            cls_mask = cls_mask[shuffle_idx]
-            x = {k: tr.cat([x_cls[k], x_contrast[k]])[shuffle_idx] for k in x_cls.keys()}
-            y = tr.cat([y_cls, tr.empty(size=[contrast_batch_size], dtype=tr.long, device=self.device)])[shuffle_idx]
+            # concat x_cls and x_contrast, and shuffle
+            x_dict, cls_mask, contrast_mask, y_cls = mix_batch(x_cls, y_cls, x_contrast)
 
             # compute prediction
-            cls_logit_dict, contrast_loss = self.model(x, head_kwargs={'cls_mask': cls_mask,
-                                                                       'contrast_mask': ~cls_mask})
-            y = y[cls_mask]
-            cls_loss = sum(self.cls_loss_fn(logit, y) for logit in cls_logit_dict.values()) / len(cls_logit_dict)
+            cls_logit_dict, contrast_loss = self.model(x_dict, head_kwargs={'cls_mask': cls_mask,
+                                                                            'contrast_mask': contrast_mask})
+
+            cls_loss = sum(self.cls_loss_fn(logit, y_cls) for logit in cls_logit_dict.values()) / len(cls_logit_dict)
             loss = cls_loss + contrast_loss
 
             # optimise
@@ -56,7 +100,7 @@ class VsfE2eFlow(BaseFlow):
             # record batch log
             train_cls_loss += cls_loss.item()
             train_contrast_loss += contrast_loss.item()
-            y_true.append(y)
+            y_true.append(y_cls)
             for modal in cls_logit_dict.keys():
                 y_preds[modal].append(cls_logit_dict.get(modal))
 
@@ -85,8 +129,7 @@ class VsfE2eFlow(BaseFlow):
         for x, y in dataloader['cls']:
             x = self.tensor_to_device(x)
             y = y.to(self.device)
-            cls_logit_dict, _ = self.model(x, head_kwargs={'cls_mask': [True] * len(y),
-                                                           'contrast_mask': []})
+            cls_logit_dict, _ = self.model(x, head_kwargs={'cls_mask': 'all', 'contrast_mask': 'none'})
             cls_loss = sum(self.cls_loss_fn(logit, y) for logit in cls_logit_dict.values()) / len(cls_logit_dict)
 
             valid_cls_loss += cls_loss.item()
@@ -97,8 +140,7 @@ class VsfE2eFlow(BaseFlow):
         # run contrast data
         for x in dataloader['contrast']:
             x = self.tensor_to_device(x)
-            _, contrast_loss = self.model(x, head_kwargs={'cls_mask': [],
-                                                          'contrast_mask': [True] * len(next(iter(x.values())))})
+            _, contrast_loss = self.model(x, head_kwargs={'cls_mask': 'none', 'contrast_mask': 'all'})
             valid_contrast_loss += contrast_loss.item()
 
         # record epoch log
@@ -122,7 +164,7 @@ class VsfE2eFlow(BaseFlow):
         for x, y in dataloader:
             x = self.tensor_to_device(x)
             y = y.to(self.device)
-            class_logit_dict, _ = model(x, head_kwargs={'cal_contrast_loss': False, 'cls_mask': [True] * len(y)})
+            class_logit_dict, _ = model(x, head_kwargs={'cls_mask': 'all', 'contrast_mask': 'none'})
             y_true.append(y)
             for modal in class_logit_dict.keys():
                 y_preds[modal].append(class_logit_dict.get(modal))

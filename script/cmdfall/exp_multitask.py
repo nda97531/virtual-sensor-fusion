@@ -115,7 +115,7 @@ def load_class_data(parquet_dir: str, window_size_sec=4, step_size_sec=0.4) -> d
     return three_dicts
 
 
-def load_unlabelled_data(parquet_dir: str, window_size_sec=4, step_size_sec=2) -> dict:
+def load_unlabelled_data(parquet_dir: str, window_size_sec=4, step_size_sec=1) -> dict:
     """
     Load all the CMDFall dataset into a dict
 
