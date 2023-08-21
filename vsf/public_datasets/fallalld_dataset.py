@@ -1,23 +1,15 @@
 import os
 import re
-from collections import defaultdict
-from glob import glob
-from typing import List, Dict
-
 import numpy as np
 import pandas as pd
 import polars as pl
 from loguru import logger
-from transforms3d.axangles import axangle2mat
-
 from vsf.public_datasets.base_classes import ParquetDatasetFormatter, NpyWindowFormatter
 from vsf.public_datasets.constant import G_TO_MS2, DEG_TO_RAD
-from vsf.utils.number_array import interval_intersection, interp_resample
-from vsf.utils.string_utils import rreplace
-from vsf.utils.pl_dataframe import resample_numeric_df as pl_resample_numeric_df
+from vsf.utils.number_array import interp_resample
 
 
-class FalAllDConstant:
+class FallAllDConst:
     # modal names
     MODAL_INERTIA = 'inertia'
 
@@ -55,13 +47,13 @@ class FallAllDParquet(ParquetDatasetFormatter):
 
         # interpolate
         formatted_acc = [
-            interp_resample(arr, old_freq=FalAllDConstant.RAW_SAMPLE_RATE['Acc'] / 1000,
-                            new_freq=self.sampling_rates[FalAllDConstant.MODAL_INERTIA])
+            interp_resample(arr, old_freq=FallAllDConst.RAW_SAMPLE_RATE['Acc'] / 1000,
+                            new_freq=self.sampling_rates[FallAllDConst.MODAL_INERTIA])
             for arr in formatted_acc
         ]
         formatted_gyr = [
-            interp_resample(arr, old_freq=FalAllDConstant.RAW_SAMPLE_RATE['Gyr'] / 1000,
-                            new_freq=self.sampling_rates[FalAllDConstant.MODAL_INERTIA])
+            interp_resample(arr, old_freq=FallAllDConst.RAW_SAMPLE_RATE['Gyr'] / 1000,
+                            new_freq=self.sampling_rates[FallAllDConst.MODAL_INERTIA])
             for arr in formatted_gyr
         ]
 
@@ -105,7 +97,7 @@ class FallAllDParquet(ParquetDatasetFormatter):
                 device_used.append(device_pos)
                 data_arr += sensor_data.iloc[n_info_cols:].tolist()
                 data_cols += [
-                    f'{device_pos}_{sensor_type.lower()}_{axis}({FalAllDConstant.SENSOR_SI_UNIT[sensor_type]})'
+                    f'{device_pos}_{sensor_type.lower()}_{axis}({FallAllDConst.SENSOR_SI_UNIT[sensor_type]})'
                     for sensor_type in sensor_types
                     for axis in ['x', 'y', 'z']
                 ]
@@ -134,7 +126,7 @@ class FallAllDParquet(ParquetDatasetFormatter):
             DF with 2 new columns 'timestamp(ms)' and 'label'
         """
         # create timestamp array
-        ts_arr = (np.arange(len(df)) / self.sampling_rates[FalAllDConstant.MODAL_INERTIA]).astype(int)
+        ts_arr = (np.arange(len(df)) / self.sampling_rates[FallAllDConst.MODAL_INERTIA]).astype(int)
         # init label array with all 0 values
         label_arr = np.zeros(len(df), dtype=int)
 
@@ -182,7 +174,7 @@ class FallAllDParquet(ParquetDatasetFormatter):
             session_info = f'subject{subject}_act{activity}_trial{trial}_device{device}'
 
             # check if already run before
-            if os.path.isfile(self.get_output_file_path(FalAllDConstant.MODAL_INERTIA, subject, session_info)):
+            if os.path.isfile(self.get_output_file_path(FallAllDConst.MODAL_INERTIA, subject, session_info)):
                 logger.info(f'Skipping session {session_info} because already run before')
                 skipped_sessions += 1
                 continue
@@ -194,7 +186,7 @@ class FallAllDParquet(ParquetDatasetFormatter):
             data_df = self.add_ts_and_label(data_df, activity)
 
             # write file
-            if self.write_output_parquet(data_df, FalAllDConstant.MODAL_INERTIA, subject, session_info):
+            if self.write_output_parquet(data_df, FallAllDConst.MODAL_INERTIA, subject, session_info):
                 written_files += 1
 
         logger.info(f'{written_files} file(s) written, {skipped_sessions} session(s) skipped')
@@ -206,23 +198,23 @@ class FallAllDNpyWindow(NpyWindowFormatter):
                  min_step_size_sec: float = None, max_short_window: int = None, modal_cols: dict = None):
         super().__init__(parquet_root_dir, window_size_sec, step_size_sec, min_step_size_sec, max_short_window,
                          modal_cols)
-        if FalAllDConstant.MODAL_INERTIA in self.modal_cols:
-            unmatched_submodal = set(self.modal_cols[FalAllDConstant.MODAL_INERTIA]) - {'waist', 'wrist', 'neck'}
+        if FallAllDConst.MODAL_INERTIA in self.modal_cols:
+            unmatched_submodal = set(self.modal_cols[FallAllDConst.MODAL_INERTIA]) - {'waist', 'wrist', 'neck'}
             assert len(unmatched_submodal) == 0, \
                 ('For FallAllD dataset only, please use device positions as sub-modal names: [waist|wrist|neck]. '
-                 f'Currently specified sub-modals are: {self.modal_cols[FalAllDConstant.MODAL_INERTIA].keys()}')
+                 f'Currently specified sub-modals are: {self.modal_cols[FallAllDConst.MODAL_INERTIA].keys()}')
 
     def get_parquet_file_list(self) -> pl.DataFrame:
         """
         Override parent class method to filter out sessions that don't have required inertial sub-modals
         """
         df = super().get_parquet_file_list()
-        if FalAllDConstant.MODAL_INERTIA not in df.columns:
+        if FallAllDConst.MODAL_INERTIA not in df.columns:
             return df
 
         df = df.filter(pl.all(
-            pl.col(FalAllDConstant.MODAL_INERTIA).str.contains(submodal)
-            for submodal in self.modal_cols[FalAllDConstant.MODAL_INERTIA].keys()
+            pl.col(FallAllDConst.MODAL_INERTIA).str.contains(submodal)
+            for submodal in self.modal_cols[FallAllDConst.MODAL_INERTIA].keys()
         ))
         return df
 
@@ -265,7 +257,7 @@ if __name__ == '__main__':
         min_step_size_sec=0.5,
         max_short_window=5,
         modal_cols={
-            FalAllDConstant.MODAL_INERTIA: {
+            FallAllDConst.MODAL_INERTIA: {
                 'waist': ['waist_acc_x(m/s^2)', 'waist_acc_y(m/s^2)', 'waist_acc_z(m/s^2)'],
                 'wrist': ['wrist_acc_x(m/s^2)', 'wrist_acc_y(m/s^2)', 'wrist_acc_z(m/s^2)']
             }
