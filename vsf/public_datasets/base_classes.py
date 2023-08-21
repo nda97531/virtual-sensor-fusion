@@ -100,7 +100,7 @@ class NpyWindowFormatter:
             max_short_window: max number of window for short activity sessions (use shifting window)
             modal_cols: a 2-level dict;
                 1st level key is parquet modal name (match with modal name in parquet file path),
-                2nd level key is sub-modal name inside the parquet files (any new name),
+                2nd level key is sub-modal names from the same parquet files (any new name),
                 2nd level value is a list of column names of that sub-modal. if None, use all columns.
                 Example
                     {
@@ -112,6 +112,7 @@ class NpyWindowFormatter:
                             'skeleton': None
                         }
                     }
+                    In this case, 'acc' and 'gyro' are from the same parquet file of modal 'inertia'
                 if `modal_cols` is None (default),
                 sub-modal will be the same as modal in parquet path, and all columns are used
         """
