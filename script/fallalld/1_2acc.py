@@ -8,13 +8,11 @@ import os
 from collections import defaultdict
 from copy import deepcopy
 from glob import glob
-
 import numpy as np
 import torch as tr
 from loguru import logger
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
-
 from vsf.data_generator.augmentation import Rotation3D
 from vsf.data_generator.classification_data_gen import BasicDataset, BalancedDataset
 from vsf.flow.single_task_flow import SingleTaskFlow
@@ -26,7 +24,7 @@ from vsf.public_datasets.fallalld_dataset import FallAllDNpyWindow, FallAllDCons
 
 
 def load_data(parquet_dir: str, window_size_sec=4, step_size_sec=2,
-              min_step_size_sec=None, max_short_window=None) -> dict:
+              min_step_size_sec=0.25, max_short_window=5) -> dict:
     """
     Load all the UP-Fall dataset into a dataframe
 
@@ -57,11 +55,24 @@ def load_data(parquet_dir: str, window_size_sec=4, step_size_sec=2,
     df = npy_dataset.run()
     list_sub_modal = list(itertools.chain.from_iterable(list(sub_dict) for sub_dict in npy_dataset.modal_cols.values()))
 
+    # get list of subjects sorted by [fall sessions/all sessions] ratio descending:
+    # list_subjects = {}
+    # for subject, group in df.groupby('subject'):
+    #     all_window_labels = np.concatenate(group['label'].tolist())
+    #     assert len(np.setdiff1d(np.unique([all_window_labels]), [0, 1])) == 0
+    #     num_fall = all_window_labels.sum()
+    #     list_subjects[subject] = num_fall / len(all_window_labels)
+    # list_subjects = np.array(sorted(list(list_subjects), key=list_subjects.get, reverse=True))
+    list_subjects = np.array([15, 3, 13, 9, 2, 1, 5, 4, 10, 11, 12, 14])
+
     # split TRAIN, VALID, TEST
-    valid_set_idx = df['subject'] % 5 == 0
+    valid_subject = list_subjects[len(list_subjects) // 2:len(list_subjects) // 2 + 2]
+    train_subject = np.setdiff1d(list_subjects[np.arange(1, len(list_subjects), 2)], valid_subject)
+
+    valid_set_idx = df['subject'].isin(valid_subject)
     valid_set = df.loc[valid_set_idx]
 
-    train_set_idx = (df['subject'] % 2 != 0) & (~valid_set_idx)
+    train_set_idx = df['subject'].isin(train_subject)
     train_set = df.loc[train_set_idx]
 
     test_set_idx = ~(train_set_idx | valid_set_idx)
@@ -82,10 +93,8 @@ def load_data(parquet_dir: str, window_size_sec=4, step_size_sec=2,
         # dict[modal][label index] = window array
         class_dict = defaultdict(dict)
         for label_idx, label_val in enumerate(label_list):
-            # don't count 'unknown' class (class index is 0)
-            if label_idx != 0:
-                idx = modal_dict['label'] == label_val
-                class_dict['acc'][label_idx - 1] = modal_dict['acc'][idx]
+            idx = modal_dict['label'] == label_val
+            class_dict['acc'][label_idx] = modal_dict['acc'][idx]
         class_dict = dict(class_dict)
 
         assert list(class_dict.keys()) == list_sub_modal, 'Mismatched submodal list'
@@ -109,7 +118,7 @@ if __name__ == '__main__':
                         help='name of the experiment to create a folder to save weights')
 
     parser.add_argument('--data-folder', '-data',
-                        default='/home/ducanh/parquet_datasets/FallAllD/',
+                        default='/mnt/data_drive/projects/UCD04 - Virtual sensor fusion/processed_parquet/FallAllD/',
                         help='path to parquet data folder')
 
     parser.add_argument('--output-folder', '-o', default='./log/fallalld',

@@ -193,17 +193,6 @@ class FallAllDParquet(ParquetDatasetFormatter):
 
 
 class FallAllDNpyWindow(NpyWindowFormatter):
-
-    def __init__(self, parquet_root_dir: str, window_size_sec: float, step_size_sec: float,
-                 min_step_size_sec: float = None, max_short_window: int = None, modal_cols: dict = None):
-        super().__init__(parquet_root_dir, window_size_sec, step_size_sec, min_step_size_sec, max_short_window,
-                         modal_cols)
-        if FallAllDConst.MODAL_INERTIA in self.modal_cols:
-            unmatched_submodal = set(self.modal_cols[FallAllDConst.MODAL_INERTIA]) - {'waist', 'wrist', 'neck'}
-            assert len(unmatched_submodal) == 0, \
-                ('For FallAllD dataset only, please use device positions as sub-modal names: [waist|wrist|neck]. '
-                 f'Currently specified sub-modals are: {self.modal_cols[FallAllDConst.MODAL_INERTIA].keys()}')
-
     def get_parquet_file_list(self) -> pl.DataFrame:
         """
         Override parent class method to filter out sessions that don't have required inertial sub-modals
@@ -212,9 +201,13 @@ class FallAllDNpyWindow(NpyWindowFormatter):
         if FallAllDConst.MODAL_INERTIA not in df.columns:
             return df
 
+        sub_modals = np.unique([
+            col.split('_')[0]
+            for col in np.concatenate(list(self.modal_cols[FallAllDConst.MODAL_INERTIA].values()))
+        ])
         df = df.filter(pl.all(
             pl.col(FallAllDConst.MODAL_INERTIA).str.contains(submodal)
-            for submodal in self.modal_cols[FallAllDConst.MODAL_INERTIA].keys()
+            for submodal in sub_modals
         ))
         return df
 
