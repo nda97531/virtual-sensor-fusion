@@ -70,7 +70,7 @@ class TCN(nn.Module):
         if rec_field < input_shape[0]:
             logger.warning(f'Receptive field is smaller than input size: {rec_field} < {input_shape[0]}')
         else:
-            logger.info(f'Window size: {input_shape[0]}; Receptive field: {rec_field}')
+            logger.info(f'Window size: {input_shape}; Receptive field: {rec_field}')
 
         layers = []
         for i in range(len(n_tcn_channels)):

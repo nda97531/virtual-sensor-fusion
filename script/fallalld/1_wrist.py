@@ -1,6 +1,6 @@
 """
 Single task: classification of all labels
-Single sensor: 2 accelerometers
+Single sensor: wrist accelerometer
 """
 
 import itertools
@@ -47,24 +47,16 @@ def load_data(parquet_dir: str, window_size_sec=4, step_size_sec=2,
         max_short_window=max_short_window,
         modal_cols={
             FallAllDConst.MODAL_INERTIA: {
-                'acc': ['waist_acc_x(m/s^2)', 'waist_acc_y(m/s^2)', 'waist_acc_z(m/s^2)',
-                        'wrist_acc_x(m/s^2)', 'wrist_acc_y(m/s^2)', 'wrist_acc_z(m/s^2)']
+                'acc': ['wrist_acc_x(m/s^2)', 'wrist_acc_y(m/s^2)', 'wrist_acc_z(m/s^2)'],
+                '_': ['waist_acc_x(m/s^2)'] # to make loader load only sessions with both accelerometers
             }
         }
     )
     df = npy_dataset.run()
     list_sub_modal = list(itertools.chain.from_iterable(list(sub_dict) for sub_dict in npy_dataset.modal_cols.values()))
+    list_sub_modal.remove('_')
 
-    # get list of subjects sorted by [fall sessions/all sessions] ratio descending:
-    # list_subjects = {}
-    # for subject, group in df.groupby('subject'):
-    #     all_window_labels = np.concatenate(group['label'].tolist())
-    #     assert len(np.setdiff1d(np.unique([all_window_labels]), [0, 1])) == 0
-    #     num_fall = all_window_labels.sum()
-    #     list_subjects[subject] = num_fall / len(all_window_labels)
-    # list_subjects = np.array(sorted(list(list_subjects), key=list_subjects.get, reverse=True))
     list_subjects = np.array([15, 3, 13, 9, 2, 1, 5, 4, 10, 11, 12, 14])
-
     # split TRAIN, VALID, TEST
     valid_subject = list_subjects[len(list_subjects) // 2:len(list_subjects) // 2 + 2]
     train_subject = np.setdiff1d(list_subjects[np.arange(1, len(list_subjects), 2)], valid_subject)
@@ -181,7 +173,7 @@ if __name__ == '__main__':
         )
 
         # train and valid
-        augmenter = Rotation3D(angle_range=180, separate_triaxial=True)
+        augmenter = Rotation3D(angle_range=180)
         train_set = BalancedDataset(deepcopy(train_dict), augmenter=augmenter)
         valid_set = BasicDataset(deepcopy(valid_dict))
         train_loader = DataLoader(train_set, batch_size=TRAIN_BATCH_SIZE, shuffle=True)

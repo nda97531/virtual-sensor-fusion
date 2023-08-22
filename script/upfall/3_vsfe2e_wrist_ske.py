@@ -1,7 +1,7 @@
 """
 Multi-task: classification of all labels (11 classes of UP-Fall) +
     VSF contrastive (all data of CMDFall, including unknown label)
-Sensors: belt accelerometer, skeleton
+Sensors: wrist accelerometer, skeleton
 """
 
 import itertools
@@ -53,7 +53,7 @@ def load_class_data(parquet_dir: str, window_size_sec=4, step_size_sec=2, min_st
         max_short_window=max_short_window,
         modal_cols={
             UPFallConst.MODAL_INERTIA: {
-                'acc': ['belt_acc_x(m/s^2)', 'belt_acc_y(m/s^2)', 'belt_acc_z(m/s^2)']
+                'acc': ['wrist_acc_x(m/s^2)', 'wrist_acc_y(m/s^2)', 'wrist_acc_z(m/s^2)']
             }
         }
     )
@@ -118,7 +118,7 @@ def load_unlabelled_data(parquet_dir: str, window_size_sec=4, step_size_sec=1) -
         step_size_sec=step_size_sec,
         modal_cols={
             CMDFallConst.MODAL_INERTIA: {
-                'acc': ['waist_acc_x(m/s^2)', 'waist_acc_y(m/s^2)', 'waist_acc_z(m/s^2)']
+                'acc': ['wrist_acc_x(m/s^2)', 'wrist_acc_y(m/s^2)', 'wrist_acc_z(m/s^2)']
             },
             CMDFallConst.MODAL_SKELETON: {
                 'ske': [c.format(kinect_id=3) for c in CMDFallConst.SELECTED_SKELETON_COLS]
@@ -154,7 +154,7 @@ if __name__ == '__main__':
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--device', '-d', default='cpu')
+    parser.add_argument('--device', '-d', default='cuda:0')
 
     parser.add_argument('--name', '-n', default='exp_vsf',
                         help='name of the experiment to create a folder to save weights')
@@ -267,8 +267,8 @@ if __name__ == '__main__':
         valid_set_unlabelled = UnlabelledFusionDataset(deepcopy(valid_unlabelled_dict))
 
         train_loader = {
-            'cls': DataLoader(train_set_cls, batch_size=2, shuffle=True),
-            'contrast': DataLoader(train_set_unlabelled, batch_size=4, shuffle=True)
+            'cls': DataLoader(train_set_cls, batch_size=TRAIN_BATCH_SIZE // 2, shuffle=True),
+            'contrast': DataLoader(train_set_unlabelled, batch_size=TRAIN_BATCH_SIZE // 2, shuffle=True)
         }
         valid_loader = {
             'cls': DataLoader(valid_set_cls, batch_size=64, shuffle=False),

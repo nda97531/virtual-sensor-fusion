@@ -121,6 +121,7 @@ class VsfModel(nn.Module):
         x_dict = {
             modal: self.dropout(self.backbones[modal](tr.permute(x_dict[modal], [0, 2, 1]), **backbone_kwargs))
             for modal in self.backbones.keys()
+            if modal in x_dict.keys()
         }
         # dict[modal] = [batch, channel]
 

@@ -77,10 +77,13 @@ class CMCLoss(ContrastiveLoss):
             return info_nce_loss(modal1=all_features[0], modal2=all_features[1], temp=self.temp, norm2_eps=self.eps)
 
         error = 0
+        num_components = 0
         for modal1_idx, modal2_idx in itertools.combinations(range(len(all_features)), 2):
             if (self.main_modal_idx is None) or (self.main_modal_idx in {modal1_idx, modal2_idx}):
                 error += info_nce_loss(all_features[modal1_idx], all_features[modal2_idx], temp=self.temp,
                                        norm2_eps=self.eps)
+                num_components += 1
+        error /= num_components
         return error
 
 
