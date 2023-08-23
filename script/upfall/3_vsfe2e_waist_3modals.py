@@ -1,7 +1,7 @@
 """
-Multi-task: classification of all labels (2 classes of FallAllD) +
-    VSF contrastive (all data of FallAllD)
-Sensors: waist, wrist
+Multi-task: classification of all labels (11 classes of UP-Fall) +
+    VSF contrastive (UP-Fall)
+Sensors: waist accelerometer, skeleton
 """
 
 import itertools
@@ -9,9 +9,8 @@ import os
 from collections import defaultdict
 from copy import deepcopy
 from glob import glob
-
-import numpy as np
 import pandas as pd
+import numpy as np
 import torch as tr
 from loguru import logger
 from torch.optim.lr_scheduler import ReduceLROnPlateau
@@ -26,37 +25,26 @@ from vsf.networks.backbone_tcn import TCN
 from vsf.networks.complete_model import VsfModel
 from vsf.networks.vsf_distributor import VsfDistributor
 from vsf.networks.contrastive_loss import CMCLoss, CocoaLoss, Cocoa2Loss
-from vsf.public_datasets.fallalld_dataset import FallAllDNpyWindow, FallAllDConst
-from vsf.public_datasets.cmd_fall_dataset import CMDFallNpyWindow, CMDFallConst
+from vsf.public_datasets.up_fall_dataset import UPFallNpyWindow, UPFallConst
 
 
-def split_fallalld_3_sets(df: pd.DataFrame) -> tuple:
-    """
-    Split a DF into 3 DF: train, valid, test
-    Args:
-        df: a DF with a column `subject`
-
-    Returns:
-        a tuple of 3 DFs: train, valid, test
-    """
-    list_subjects = np.array([15, 3, 13, 9, 2, 1, 5, 4, 10, 11, 12, 14])
+def split_3_sets(df: pd.DataFrame) -> tuple:
     # split TRAIN, VALID, TEST
-    valid_subject = list_subjects[len(list_subjects) // 2:len(list_subjects) // 2 + 2]
-    train_subject = np.setdiff1d(list_subjects[np.arange(1, len(list_subjects), 2)], valid_subject)
-
-    valid_set_idx = df['subject'].isin(valid_subject)
+    # subject 5, 10, 15 for validation
+    valid_set_idx = df['subject'] % 5 == 0
     valid_set = df.loc[valid_set_idx]
-
-    train_set_idx = df['subject'].isin(train_subject)
+    # odd subjects as train set
+    train_set_idx = (df['subject'] % 2 != 0) & (~valid_set_idx)
     train_set = df.loc[train_set_idx]
-
+    # 1/3 subjects as test set
     test_set_idx = ~(train_set_idx | valid_set_idx)
     test_set = df.loc[test_set_idx]
+
     return train_set, valid_set, test_set
 
 
-def load_class_data(parquet_dir: str, window_size_sec=4, step_size_sec=2,
-                    min_step_size_sec=0.25, max_short_window=5) -> dict:
+def load_class_data(parquet_dir: str, window_size_sec=4, step_size_sec=2, min_step_size_sec=0.5,
+                    max_short_window=5) -> dict:
     """
     Load all the UP-Fall dataset into a dataframe
 
@@ -71,42 +59,47 @@ def load_class_data(parquet_dir: str, window_size_sec=4, step_size_sec=2,
         a 3-level dict:
             dict[train/valid/test][submodal name][label index] = windows array shape [n, ..., channel]
     """
-    npy_dataset = FallAllDNpyWindow(
+    upfall = UPFallNpyWindow(
         parquet_root_dir=parquet_dir,
         window_size_sec=window_size_sec,
         step_size_sec=step_size_sec,
         min_step_size_sec=min_step_size_sec,
         max_short_window=max_short_window,
         modal_cols={
-            FallAllDConst.MODAL_INERTIA: {
-                'waist': ['waist_acc_x(m/s^2)', 'waist_acc_y(m/s^2)', 'waist_acc_z(m/s^2)'],
-                'wrist': ['wrist_acc_x(m/s^2)', 'wrist_acc_y(m/s^2)', 'wrist_acc_z(m/s^2)']
-            }
+            UPFallConst.MODAL_INERTIA: {
+                'waist': ['belt_acc_x(m/s^2)', 'belt_acc_y(m/s^2)', 'belt_acc_z(m/s^2)'],
+                # 'wrist': ['wrist_acc_x(m/s^2)', 'wrist_acc_y(m/s^2)', 'wrist_acc_z(m/s^2)'],
+            },
+            # UPFallConst.MODAL_SKELETON: {
+            #     'ske': list(itertools.chain.from_iterable(
+            #         [f'x_{joint}', f'y_{joint}'] for joint in
+            #         ['Neck', 'RElbow', 'LElbow', 'RWrist', 'LWrist', 'RKnee', 'LKnee', 'RAnkle', 'LAnkle']
+            #     ))
+            # }
         }
     )
-    df = npy_dataset.run()
-    list_sub_modal = list(itertools.chain.from_iterable(list(sub_dict) for sub_dict in npy_dataset.modal_cols.values()))
+    df = upfall.run()
+    list_sub_modal = list(itertools.chain.from_iterable(list(sub_dict) for sub_dict in upfall.modal_cols.values()))
 
-    train_set, valid_set, test_set = split_fallalld_3_sets(df)
+    train_set, valid_set, test_set = split_3_sets(df)
 
     def concat_data_in_df(df):
         # concat sessions in cells into an array
-        # dict key: modal (including label); value: array shape [num window, widow size, channel]
         modal_dict = {}
         for col in df.columns:
-            if col != 'subject':
+            if col not in {'subject', 'trial'}:
                 col_data = df[col].tolist()
                 modal_dict[col] = np.concatenate(col_data)
 
         # construct dict with classes are keys
-        # key lvl 1: modal; key lvl 2: label; value: array shape [num window, widow size, channel]
         label_list = np.unique(modal_dict['label'])
         # dict[modal][label index] = window array
         class_dict = defaultdict(dict)
         for label_idx, label_val in enumerate(label_list):
             idx = modal_dict['label'] == label_val
             class_dict['waist'][label_idx] = modal_dict['waist'][idx]
-            class_dict['wrist'][label_idx] = modal_dict['wrist'][idx]
+            # class_dict['wrist'][label_idx] = modal_dict['wrist'][idx]
+            # class_dict['ske'][label_idx] = modal_dict['ske'][idx]
         class_dict = dict(class_dict)
 
         assert list(class_dict.keys()) == list_sub_modal, 'Mismatched submodal list'
@@ -120,14 +113,12 @@ def load_class_data(parquet_dir: str, window_size_sec=4, step_size_sec=2,
     return results
 
 
-def load_unlabelled_data(fallalld_parquet_dir: str, cmdfall_parquet_dir: str,
-                         window_size_sec=4, step_size_sec=1) -> dict:
+def load_unlabelled_data(parquet_dir: str, window_size_sec=4, step_size_sec=1) -> dict:
     """
-    Load all the FallAllD dataset into a dict
+    Load all the CMDFall dataset into a dict
 
     Args:
-        fallalld_parquet_dir: path to processed parquet folder of FallAllD
-        cmdfall_parquet_dir: path to processed parquet folder of CMDFall
+        parquet_dir: path to processed parquet folder
         window_size_sec: window size in second for sliding window
         step_size_sec: step size in second for sliding window
 
@@ -135,43 +126,26 @@ def load_unlabelled_data(fallalld_parquet_dir: str, cmdfall_parquet_dir: str,
         a 2-level dict:
             dict[train/valid/test][submodal name] = windows array shape [n, ..., channel]
     """
-    # load FallAllD dataset
-    fallalld_npy_dataset = FallAllDNpyWindow(
-        parquet_root_dir=fallalld_parquet_dir,
+    npy_dataset = UPFallNpyWindow(
+        parquet_root_dir=parquet_dir,
         window_size_sec=window_size_sec,
         step_size_sec=step_size_sec,
         modal_cols={
-            FallAllDConst.MODAL_INERTIA: {
-                'waist': ['waist_acc_x(m/s^2)', 'waist_acc_y(m/s^2)', 'waist_acc_z(m/s^2)'],
-                'wrist': ['wrist_acc_x(m/s^2)', 'wrist_acc_y(m/s^2)', 'wrist_acc_z(m/s^2)']
+            UPFallConst.MODAL_INERTIA: {
+                'waist': ['belt_acc_x(m/s^2)', 'belt_acc_y(m/s^2)', 'belt_acc_z(m/s^2)'],
+                'wrist': ['wrist_acc_x(m/s^2)', 'wrist_acc_y(m/s^2)', 'wrist_acc_z(m/s^2)'],
+            },
+            UPFallConst.MODAL_SKELETON: {
+                'ske': list(itertools.chain.from_iterable(
+                    [f'x_{joint}', f'y_{joint}'] for joint in
+                    ['Neck', 'RElbow', 'LElbow', 'RWrist', 'LWrist', 'RKnee', 'LKnee', 'RAnkle', 'LAnkle']
+                ))
             }
         }
     )
-    fallalld_df = fallalld_npy_dataset.run(shift_short_activity=False)
-    fallalld_train_set, fallalld_valid_set, _ = split_fallalld_3_sets(fallalld_df)
+    df = npy_dataset.run(shift_short_activity=False)
 
-    # load CMDFall dataset
-    cmdfall_npy_dataset = CMDFallNpyWindow(
-        parquet_root_dir=cmdfall_parquet_dir,
-        window_size_sec=window_size_sec,
-        step_size_sec=step_size_sec,
-        modal_cols={
-            CMDFallConst.MODAL_INERTIA: {
-                'waist': ['waist_acc_x(m/s^2)', 'waist_acc_y(m/s^2)', 'waist_acc_z(m/s^2)'],
-                'wrist': ['wrist_acc_x(m/s^2)', 'wrist_acc_y(m/s^2)', 'wrist_acc_z(m/s^2)']
-            }
-        }
-    )
-    cmdfall_df = cmdfall_npy_dataset.run()
-    # split CMDFall into train and valid
-    cmdfall_valid_set_idx = cmdfall_df['subject'] % 10 == 0
-    cmdfall_valid_set = cmdfall_df.loc[cmdfall_valid_set_idx]
-    cmdfall_train_set_idx = ~cmdfall_valid_set_idx
-    cmdfall_train_set = cmdfall_df.loc[cmdfall_train_set_idx]
-
-    # concat 2 unlabelled datasets
-    train_set = pd.concat([fallalld_train_set, cmdfall_train_set], ignore_index=True)
-    valid_set = pd.concat([fallalld_valid_set, cmdfall_valid_set], ignore_index=True)
+    train_set, valid_set, _ = split_3_sets(df)
 
     def concat_data_in_df(df):
         # concat sessions in cells into an array
@@ -196,18 +170,18 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--device', '-d', default='cuda:0')
 
-    parser.add_argument('--name', '-n', default='exp_vsf',
+    parser.add_argument('--name', '-n', required=True,
                         help='name of the experiment to create a folder to save weights')
 
     parser.add_argument('--class-data-folder', '-lbl',
-                        default='/home/ducanh/parquet_datasets/FallAllD/',
+                        default='/home/ducanh/parquet_datasets/UP-Fall/',
                         help='path to parquet data folder - classification task')
 
     parser.add_argument('--unlabelled-data-folder', '-ulb',
-                        default='/home/ducanh/parquet_datasets/CMDFall/',
+                        default='/home/ducanh/parquet_datasets/UP-Fall/',
                         help='path to parquet data folder - contrastive learning task')
 
-    parser.add_argument('--output-folder', '-o', default='./log/fallalld',
+    parser.add_argument('--output-folder', '-o', default='./log/upfall',
                         help='path to save training logs and model weights')
 
     args = parser.parse_args()
@@ -227,12 +201,11 @@ if __name__ == '__main__':
     test_cls_dict = three_class_dicts['test']
     del three_class_dicts
 
-    three_unlabelled_dicts = load_unlabelled_data(fallalld_parquet_dir=args.class_data_folder,
-                                                  cmdfall_parquet_dir=args.unlabelled_data_folder)
+    three_unlabelled_dicts = load_unlabelled_data(parquet_dir=args.unlabelled_data_folder)
     train_unlabelled_dict = three_unlabelled_dicts['train']
     valid_unlabelled_dict = three_unlabelled_dicts['valid']
     del three_unlabelled_dicts
-    assert train_cls_dict['wrist'][0].shape[1:] == train_unlabelled_dict['wrist'].shape[1:]
+    assert train_cls_dict['waist'][0].shape[1:] == train_unlabelled_dict['waist'].shape[1:]
 
     test_scores = []
     model_paths = []
@@ -257,6 +230,15 @@ if __name__ == '__main__':
                 use_spatial_dropout=True,
                 conv_norm='batch',
                 attention_conv_norm=''
+            ),
+            'ske': TCN(
+                input_shape=train_unlabelled_dict['ske'].shape[1:],
+                how_flatten='spatial attention gap',
+                n_tcn_channels=(64,) * 4 + (128,) * 2,
+                tcn_drop_rate=0.5,
+                use_spatial_dropout=True,
+                conv_norm='batch',
+                attention_conv_norm=''
             )
         })
 
@@ -264,7 +246,8 @@ if __name__ == '__main__':
             input_dims={modal: 128 for modal in backbone.keys()},  # affect contrast loss order
             num_classes={  # affect class logit order
                 'waist': len(train_cls_dict[list(train_cls_dict.keys())[0]]),
-                'wrist': len(train_cls_dict[list(train_cls_dict.keys())[0]])
+                # 'wrist': len(train_cls_dict[list(train_cls_dict.keys())[0]]),
+                # 'ske': len(train_cls_dict[list(train_cls_dict.keys())[0]])
             },
             contrastive_loss_func=CMCLoss(temp=0.1),
             contrast_feature_dim=None,
@@ -298,15 +281,16 @@ if __name__ == '__main__':
 
         # train and valid
         augmenter = {
-            'wrist': Rotation3D(angle_range=180),
-            'waist': Rotation3D(angle_range=180)
+            'waist': Rotation3D(angle_range=30),
+            'wrist': Rotation3D(angle_range=30)
         }
         train_set_cls = BalancedFusionDataset(deepcopy(train_cls_dict), augmenters=augmenter)
         valid_set_cls = FusionDataset(deepcopy(valid_cls_dict))
 
         augmenter = {
+            'waist': Rotation3D(angle_range=180),
             'wrist': Rotation3D(angle_range=180),
-            'waist': Rotation3D(angle_range=180)
+            'ske': Rotation3D(angle_range=180, rot_axis=np.array([0, 0, 1]))
         }
         train_set_unlabelled = UnlabelledFusionDataset(deepcopy(train_unlabelled_dict), augmenters=augmenter)
         valid_set_unlabelled = UnlabelledFusionDataset(deepcopy(valid_unlabelled_dict))

@@ -63,15 +63,15 @@ def load_data(parquet_dir: str, window_size_sec=4, step_size_sec=2, min_step_siz
     list_sub_modal = list(itertools.chain.from_iterable(list(sub_dict) for sub_dict in upfall.modal_cols.values()))
 
     # split TRAIN, VALID, TEST
-    # 1/3 subjects as test set
-    test_set_idx = df['subject'] % 3 == 0
-    test_set = df.loc[test_set_idx]
-    # trial 3 of 2/3 subjects as valid set
-    valid_set_idx = (~test_set_idx) & (df['trial'] == 3)
+    # subject 5, 10, 15 for validation
+    valid_set_idx = df['subject'] % 5 == 0
     valid_set = df.loc[valid_set_idx]
-    # trial 1 and 2 of 2/3 subjects as train set
-    train_set_idx = ~(test_set_idx | valid_set_idx)
+    # odd subjects as train set
+    train_set_idx = (df['subject'] % 2 != 0) & (~valid_set_idx)
     train_set = df.loc[train_set_idx]
+    # 1/3 subjects as test set
+    test_set_idx = ~(train_set_idx | valid_set_idx)
+    test_set = df.loc[test_set_idx]
 
     def concat_data_in_df(df):
         # concat sessions in cells into an array
@@ -108,7 +108,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--device', '-d', default='cuda:0')
 
-    parser.add_argument('--name', '-n', default='exp1_2',
+    parser.add_argument('--name', '-n', required=True,
                         help='name of the experiment to create a folder to save weights')
 
     parser.add_argument('--data-folder', '-data',
@@ -190,8 +190,7 @@ if __name__ == '__main__':
 
         # train and valid
         augmenter = {
-            'acc': Rotation3D(angle_range=30),
-            'ske': HorizontalFlip()
+            'acc': Rotation3D(angle_range=30)
         }
         train_set = BalancedFusionDataset(deepcopy(train_dict), augmenters=augmenter)
         valid_set = FusionDataset(deepcopy(valid_dict))

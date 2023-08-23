@@ -373,7 +373,15 @@ class UPFallParquet(ParquetDatasetFormatter):
 
 
 class UPFallNpyWindow(NpyWindowFormatter):
-    def run(self) -> pd.DataFrame:
+    def run(self, shift_short_activity: bool = True) -> pd.DataFrame:
+        """
+
+        Args:
+            shift_short_activity: whether to run shifting windows on fall sessions (or just run normal sliding window)
+
+        Returns:
+            please see parent class's method
+        """
         # get list of parquet files
         parquet_sessions = self.get_parquet_file_list()
 
@@ -389,11 +397,8 @@ class UPFallNpyWindow(NpyWindowFormatter):
                 parquet_session=parquet_session,
                 subject=subject,
                 session_label=session_label,
-                is_short_activity=session_label in UPFallConst.SHORT_ACTIVITIES
+                is_short_activity=(session_label in UPFallConst.SHORT_ACTIVITIES) if shift_short_activity else False
             )
-
-            # add trial info
-            session_result['trial'] = session_trial
 
             result.append(session_result)
         result = pd.DataFrame(result)

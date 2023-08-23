@@ -6,7 +6,7 @@ import torch.nn.functional as F
 from torch import nn
 
 
-def info_nce_loss(modal1: tr.Tensor, modal2: tr.Tensor, temp: float = 1, norm2_eps: float = 1e-8):
+def info_nce_loss(modal1: tr.Tensor, modal2: tr.Tensor, temp: float = 1, norm2_eps: float = 1e-6):
     """
     InfoNCE loss between 2 modalities
 
@@ -47,7 +47,7 @@ class ContrastiveLoss(nn.Module):
 
 
 class CMCLoss(ContrastiveLoss):
-    def __init__(self, main_modal_idx: int = None, temp: float = 1, norm2_eps: float = 1e-8, *args, **kwargs):
+    def __init__(self, main_modal_idx: int = None, temp: float = 1, norm2_eps: float = 1e-6, *args, **kwargs):
         """
         CMC loss for multiple modals
 
@@ -88,7 +88,7 @@ class CMCLoss(ContrastiveLoss):
 
 
 class CocoaLoss(ContrastiveLoss):
-    def __init__(self, temp: float = 1, norm2_eps: float = 1e-8, *args, **kwargs):
+    def __init__(self, temp: float = 1, norm2_eps: float = 1e-6, *args, **kwargs):
         """
         Calculate COCOA loss (with Cross Entropy) from features of multiple modals.
         Source: https://github.com/cruiseresearchgroup/COCOA/blob/main/src/losses.py
@@ -141,7 +141,7 @@ class CocoaLoss(ContrastiveLoss):
 
 
 class Cocoa2Loss(ContrastiveLoss):
-    def __init__(self, temp: float = 1, norm2_eps: float = 1e-8, scale_loss: float = 1 / 32, lambda_: float = 3.9e-3,
+    def __init__(self, temp: float = 1, norm2_eps: float = 1e-6, scale_loss: float = 1 / 32, lambda_: float = 3.9e-3,
                  *args, **kwargs):
         """
         Calculate COCOA loss (with Cross Entropy) from features of multiple modals.
