@@ -17,7 +17,7 @@ from torch import nn
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
 
-from vsf.data_generator.augmentation import Rotation3D, HorizontalFlip
+from vsf.data_generator.augmentation import Rotation3D
 from vsf.data_generator.classification_data_gen import FusionDataset, BalancedFusionDataset
 
 from vsf.flow.torch_callbacks import ModelCheckpoint, EarlyStop
@@ -26,7 +26,7 @@ from vsf.networks.backbone_tcn import TCN
 from vsf.networks.complete_model import VsfModel
 from vsf.networks.vsf_distributor import VsfDistributor
 from vsf.public_datasets.up_fall_dataset import UPFallNpyWindow, UPFallConst
-from vsf.networks.contrastive_loss import CMCLoss, CocoaLoss, Cocoa2Loss
+from vsf.loss_functions.contrastive_loss import CocoaLoss
 
 
 def load_data(parquet_dir: str, window_size_sec=4, step_size_sec=2, min_step_size_sec=0.5,
@@ -180,11 +180,10 @@ if __name__ == '__main__':
         save_folder = f'{save_folder}/run_{last_run}'
 
         # create training config
-        loss_fn = 'classification_auto'
         optimizer = tr.optim.SGD(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY, momentum=0.9)
         model_file_path = f'{save_folder}/model.pth'
         flow = VSFFlow(
-            model=model, loss_fn=loss_fn, optimizer=optimizer,
+            model=model, optimizer=optimizer,
             device=args.device,
             callbacks=[
                 ModelCheckpoint(NUM_EPOCH, model_file_path),

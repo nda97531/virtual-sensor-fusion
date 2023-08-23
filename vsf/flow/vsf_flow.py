@@ -193,7 +193,6 @@ if __name__ == '__main__':
         model=None,
         optimizer=None,
         device='cuda:0',
-        cls_loss_fn='classification_auto',
         callbacks=None
     )
     flow.run()

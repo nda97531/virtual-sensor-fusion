@@ -25,7 +25,7 @@ from vsf.networks.complete_model import FusionClsModel
 from vsf.public_datasets.cmd_fall_dataset import CMDFallNpyWindow, CMDFallConst
 
 
-def load_data(parquet_dir: str, window_size_sec=4, step_size_sec=0.4, 
+def load_data(parquet_dir: str, window_size_sec=4, step_size_sec=0.4,
               min_step_size_sec=None, max_short_window=None) -> dict:
     """
     Load all the UP-Fall dataset into a dataframe
@@ -176,11 +176,10 @@ if __name__ == '__main__':
         save_folder = f'{save_folder}/run_{last_run}'
 
         # create training config
-        loss_fn = 'classification_auto'
         optimizer = tr.optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
         model_file_path = f'{save_folder}/model.pth'
         flow = SingleTaskFlow(
-            model=model, cls_loss_fn=loss_fn, optimizer=optimizer,
+            model=model, optimizer=optimizer,
             device=args.device,
             callbacks=[
                 ModelCheckpoint(NUM_EPOCH, model_file_path, smaller_better=False),

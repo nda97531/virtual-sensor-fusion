@@ -7,7 +7,7 @@ import torch as tr
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
 
-from vsf.flow.flow_functions import auto_classification_loss
+from vsf.loss_functions.classification_loss import AutoCrossEntropyLoss
 from vsf.flow.torch_callbacks import TorchCallback, CallbackAction
 
 
@@ -15,7 +15,7 @@ class BaseFlow(ABC):
     def __init__(self, model: tr.nn.Module,
                  optimizer: tr.optim.Optimizer,
                  device: str,
-                 cls_loss_fn: Union[tr.nn.Module, callable, list, str] = 'classification_auto',
+                 cls_loss_fn: Union[tr.nn.Module, callable] = AutoCrossEntropyLoss(),
                  callbacks: List[TorchCallback] = None,
                  callback_criterion: str = 'loss'):
         """
@@ -32,7 +32,7 @@ class BaseFlow(ABC):
         self.model = model.to(device)
         self.optimizer = optimizer
         self.device = device
-        self.cls_loss_fn = auto_classification_loss if cls_loss_fn == 'classification_auto' else cls_loss_fn
+        self.cls_loss_fn = cls_loss_fn
 
         self.train_log = []
         self.valid_log = []

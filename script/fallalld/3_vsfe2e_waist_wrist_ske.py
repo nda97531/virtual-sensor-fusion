@@ -11,7 +11,6 @@ from copy import deepcopy
 from glob import glob
 
 import numpy as np
-import pandas as pd
 import torch as tr
 from loguru import logger
 from torch.optim.lr_scheduler import ReduceLROnPlateau
@@ -25,7 +24,7 @@ from vsf.flow.vsf_flow import VsfE2eFlow
 from vsf.networks.backbone_tcn import TCN
 from vsf.networks.complete_model import VsfModel
 from vsf.networks.vsf_distributor import VsfDistributor
-from vsf.networks.contrastive_loss import CMCLoss, CocoaLoss, Cocoa2Loss
+from vsf.loss_functions.contrastive_loss import CMCLoss
 from vsf.public_datasets.fallalld_dataset import FallAllDNpyWindow, FallAllDConst
 from vsf.public_datasets.cmd_fall_dataset import CMDFallNpyWindow, CMDFallConst
 

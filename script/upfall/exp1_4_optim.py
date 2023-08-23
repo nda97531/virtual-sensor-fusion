@@ -26,7 +26,7 @@ from vsf.networks.backbone_tcn import TCN
 from vsf.networks.complete_model import VsfModel
 from vsf.networks.vsf_distributor import VsfDistributor
 from vsf.public_datasets.up_fall_dataset import UPFallNpyWindow, UPFallConst
-from vsf.networks.contrastive_loss import CMCLoss, CocoaLoss, Cocoa2Loss
+from vsf.loss_functions.contrastive_loss import CocoaLoss
 
 
 def load_data(parquet_dir: str, window_size_sec=4, step_size_sec=2, min_step_size_sec=0.5,
@@ -186,7 +186,6 @@ if __name__ == '__main__':
         save_folder = f'{save_folder}/run_{last_run}'
 
         # create training config
-        loss_fn = 'classification_auto'
         cls_optimizer = tr.optim.SGD(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY, momentum=0.9)
         contrast_optimizer = tr.optim.SGD(
             model.backbones['belt_acc'].parameters(),
@@ -195,7 +194,7 @@ if __name__ == '__main__':
 
         model_file_path = f'{save_folder}/model.pth'
         flow = VSFFlow(
-            model=model, loss_fn=loss_fn, cls_optimizer=cls_optimizer, contrast_optimizer=contrast_optimizer,
+            model=model, cls_optimizer=cls_optimizer, contrast_optimizer=contrast_optimizer,
             device=args.device,
             callbacks=[
                 ModelCheckpoint(NUM_EPOCH, model_file_path),

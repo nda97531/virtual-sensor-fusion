@@ -4,7 +4,7 @@ VSF distributor receives features from backbone models, run additional layers if
 from typing import Union
 import torch as tr
 import torch.nn as nn
-from vsf.networks.contrastive_loss import ContrastiveLoss
+from vsf.loss_functions.contrastive_loss import ContrastiveLoss
 
 
 class VsfDistributor(nn.Module):
