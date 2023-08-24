@@ -27,6 +27,7 @@ from vsf.networks.vsf_distributor import VsfDistributor
 from vsf.loss_functions.contrastive_loss import CMCLoss
 from vsf.public_datasets.cmd_fall_dataset import CMDFallNpyWindow, CMDFallConst
 from vsf.public_datasets.up_fall_dataset import UPFallNpyWindow, UPFallConst
+from vsf.loss_functions.classification_loss import AutoCrossEntropyLoss
 
 
 def load_class_data(parquet_dir: str, window_size_sec=4, step_size_sec=2, min_step_size_sec=0.5,
@@ -256,6 +257,7 @@ if __name__ == '__main__':
             model=model,
             optimizer=optimizer,
             device=args.device,
+            cls_loss_fn=AutoCrossEntropyLoss(confidence_loss_weight=1),
             callbacks=[
                 ModelCheckpoint(NUM_EPOCH, model_file_path, smaller_better=False),
                 EarlyStop(EARLY_STOP_PATIENCE, smaller_better=False),

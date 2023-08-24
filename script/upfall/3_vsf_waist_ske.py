@@ -16,7 +16,7 @@ from loguru import logger
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
 
-from vsf.data_generator.augmentation import Rotation3D
+from vsf.data_generator.augmentation import Rotation3D, HorizontalFlip
 from vsf.data_generator.classification_data_gen import FusionDataset, BalancedFusionDataset
 from vsf.data_generator.unlabelled_data_gen import UnlabelledFusionDataset
 from vsf.flow.torch_callbacks import ModelCheckpoint, EarlyStop
@@ -26,6 +26,7 @@ from vsf.networks.complete_model import VsfModel
 from vsf.networks.vsf_distributor import VsfDistributor
 from vsf.loss_functions.contrastive_loss import CMCLoss
 from vsf.public_datasets.up_fall_dataset import UPFallNpyWindow, UPFallConst
+from vsf.loss_functions.classification_loss import AutoCrossEntropyLoss
 
 
 def split_3_sets(df: pd.DataFrame) -> tuple:
@@ -67,15 +68,14 @@ def load_class_data(parquet_dir: str, window_size_sec=4, step_size_sec=2, min_st
         max_short_window=max_short_window,
         modal_cols={
             UPFallConst.MODAL_INERTIA: {
-                'waist': ['belt_acc_x(m/s^2)', 'belt_acc_y(m/s^2)', 'belt_acc_z(m/s^2)'],
-                # 'wrist': ['wrist_acc_x(m/s^2)', 'wrist_acc_y(m/s^2)', 'wrist_acc_z(m/s^2)'],
+                'waist': ['belt_acc_x(m/s^2)', 'belt_acc_y(m/s^2)', 'belt_acc_z(m/s^2)']
             },
-            # UPFallConst.MODAL_SKELETON: {
-            #     'ske': list(itertools.chain.from_iterable(
-            #         [f'x_{joint}', f'y_{joint}'] for joint in
-            #         ['Neck', 'RElbow', 'LElbow', 'RWrist', 'LWrist', 'RKnee', 'LKnee', 'RAnkle', 'LAnkle']
-            #     ))
-            # }
+            UPFallConst.MODAL_SKELETON: {
+                'ske': list(itertools.chain.from_iterable(
+                    [f'x_{joint}', f'y_{joint}'] for joint in
+                    ['Neck', 'RElbow', 'LElbow', 'RWrist', 'LWrist', 'RKnee', 'LKnee', 'RAnkle', 'LAnkle']
+                ))
+            }
         }
     )
     df = upfall.run()
@@ -98,8 +98,7 @@ def load_class_data(parquet_dir: str, window_size_sec=4, step_size_sec=2, min_st
         for label_idx, label_val in enumerate(label_list):
             idx = modal_dict['label'] == label_val
             class_dict['waist'][label_idx] = modal_dict['waist'][idx]
-            # class_dict['wrist'][label_idx] = modal_dict['wrist'][idx]
-            # class_dict['ske'][label_idx] = modal_dict['ske'][idx]
+            class_dict['ske'][label_idx] = modal_dict['ske'][idx]
         class_dict = dict(class_dict)
 
         assert list(class_dict.keys()) == list_sub_modal, 'Mismatched submodal list'
@@ -132,8 +131,7 @@ def load_unlabelled_data(parquet_dir: str, window_size_sec=4, step_size_sec=1) -
         step_size_sec=step_size_sec,
         modal_cols={
             UPFallConst.MODAL_INERTIA: {
-                'waist': ['belt_acc_x(m/s^2)', 'belt_acc_y(m/s^2)', 'belt_acc_z(m/s^2)'],
-                'wrist': ['wrist_acc_x(m/s^2)', 'wrist_acc_y(m/s^2)', 'wrist_acc_z(m/s^2)'],
+                'waist': ['belt_acc_x(m/s^2)', 'belt_acc_y(m/s^2)', 'belt_acc_z(m/s^2)']
             },
             UPFallConst.MODAL_SKELETON: {
                 'ske': list(itertools.chain.from_iterable(
@@ -222,15 +220,6 @@ if __name__ == '__main__':
                 conv_norm='batch',
                 attention_conv_norm=''
             ),
-            'wrist': TCN(
-                input_shape=train_unlabelled_dict['wrist'].shape[1:],
-                how_flatten='spatial attention gap',
-                n_tcn_channels=(64,) * 5 + (128,) * 2,
-                tcn_drop_rate=0.5,
-                use_spatial_dropout=True,
-                conv_norm='batch',
-                attention_conv_norm=''
-            ),
             'ske': TCN(
                 input_shape=train_unlabelled_dict['ske'].shape[1:],
                 how_flatten='spatial attention gap',
@@ -246,8 +235,7 @@ if __name__ == '__main__':
             input_dims={modal: 128 for modal in backbone.keys()},  # affect contrast loss order
             num_classes={  # affect class logit order
                 'waist': len(train_cls_dict[list(train_cls_dict.keys())[0]]),
-                # 'wrist': len(train_cls_dict[list(train_cls_dict.keys())[0]]),
-                # 'ske': len(train_cls_dict[list(train_cls_dict.keys())[0]])
+                'ske': len(train_cls_dict[list(train_cls_dict.keys())[0]])
             },
             contrastive_loss_func=CMCLoss(temp=0.1),
             contrast_feature_dim=None,
@@ -271,6 +259,7 @@ if __name__ == '__main__':
             model=model,
             optimizer=optimizer,
             device=args.device,
+            cls_loss_fn=AutoCrossEntropyLoss(confidence_loss_weight=1),
             callbacks=[
                 ModelCheckpoint(NUM_EPOCH, model_file_path, smaller_better=False),
                 EarlyStop(EARLY_STOP_PATIENCE, smaller_better=False),
@@ -281,16 +270,14 @@ if __name__ == '__main__':
 
         # train and valid
         augmenter = {
-            'waist': Rotation3D(angle_range=30),
-            'wrist': Rotation3D(angle_range=30)
+            'waist': Rotation3D(angle_range=30)
         }
         train_set_cls = BalancedFusionDataset(deepcopy(train_cls_dict), augmenters=augmenter)
         valid_set_cls = FusionDataset(deepcopy(valid_cls_dict))
 
         augmenter = {
             'waist': Rotation3D(angle_range=180),
-            'wrist': Rotation3D(angle_range=180),
-            'ske': Rotation3D(angle_range=180, rot_axis=np.array([0, 0, 1]))
+            'ske': HorizontalFlip()
         }
         train_set_unlabelled = UnlabelledFusionDataset(deepcopy(train_unlabelled_dict), augmenters=augmenter)
         valid_set_unlabelled = UnlabelledFusionDataset(deepcopy(valid_unlabelled_dict))

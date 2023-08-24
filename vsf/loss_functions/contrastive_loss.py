@@ -20,11 +20,11 @@ def info_nce_loss(modal1: tr.Tensor, modal2: tr.Tensor, temp: float = 1, norm2_e
         a pytorch float
     """
     # tensor shape [batch, batch]
-    sim = tr.matmul(modal1, modal2.permute([1, 0]))
-    if norm2_eps > 0:
-        length1 = tr.sqrt((modal1 ** 2).sum(dim=-1, keepdims=True))
-        length2 = tr.sqrt((modal2 ** 2).sum(dim=-1, keepdims=True))
-        sim /= tr.maximum(tr.matmul(length1, length2.permute([1, 0])), tr.tensor(norm2_eps))
+    length1 = tr.sqrt((modal1 ** 2).sum(dim=-1, keepdims=True))
+    length2 = tr.sqrt((modal2 ** 2).sum(dim=-1, keepdims=True))
+    sim = tr.matmul(modal1, modal2.permute([1, 0])) / \
+          tr.maximum(tr.matmul(length1, length2.permute([1, 0])), tr.tensor(norm2_eps))
+
     sim = sim / temp
     # create positive idx tensor on the same device as `sim`
     positive_pair_idx = sim.new(np.arange(sim.shape[0])).long()
