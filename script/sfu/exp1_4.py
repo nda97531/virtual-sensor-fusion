@@ -168,7 +168,7 @@ if __name__ == '__main__':
                 submodal: num_class
                 for submodal in backbone.keys()
             },
-            contrastive_loss_func=CocoaLoss(temp=0.1, norm2_eps=1e-8),
+            contrastive_loss_func=CocoaLoss(temp=0.1),
             contrast_feature_dim=None,
             main_modal=None
         )
