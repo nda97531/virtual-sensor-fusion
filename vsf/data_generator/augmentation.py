@@ -32,6 +32,9 @@ def format_range(x: any, start_0: bool) -> np.ndarray:
 
 
 class Augmenter:
+    # whether the augmenter's randomizer depend on data shape
+    DATA_DEPENDENT_RANDOM: bool
+
     def __init__(self, p: float = 1, random_seed: Union[int, None] = None):
         """
         Abstract base class for augmenters
@@ -82,6 +85,8 @@ class Augmenter:
 
 
 class ComposeAugmenters(Augmenter):
+    DATA_DEPENDENT_RANDOM = False
+
     def __init__(self, augmenters: List[Augmenter], shuffle_augmenters: bool = True,
                  p: float = 1, random_seed: Union[int, None] = None):
         """
@@ -111,6 +116,8 @@ class ComposeAugmenters(Augmenter):
 
 
 class Rotation3D(Augmenter):
+    DATA_DEPENDENT_RANDOM = True
+
     def __init__(self, angle_range: Union[list, tuple, float] = 180, rot_axis: np.ndarray = None,
                  separate_triaxial: bool = False, p: float = 1, random_seed: Union[int, None] = None) -> None:
         """
@@ -183,6 +190,8 @@ class Rotation3D(Augmenter):
 
 
 class HorizontalFlip(Augmenter):
+    DATA_DEPENDENT_RANDOM = False
+
     def __init__(self, p=0.5, random_seed: Union[int, None] = None):
         """
         Flip skeleton data horizontally by multiplying x-axis with -1.
@@ -206,6 +215,8 @@ class HorizontalFlip(Augmenter):
 
 
 class TimeWarp(Augmenter):
+    DATA_DEPENDENT_RANDOM = False
+
     def __init__(self, sigma: float = 0.2, knot_range: Union[int, list] = 4,
                  p: float = 1, random_seed: Union[int, None] = None):
         """
@@ -234,13 +245,11 @@ class TimeWarp(Augmenter):
             numpy array shape [length, num_curves]
         """
         knot = self.randomizer.integers(self.knot_range[0], self.knot_range[1])
-        tt = gen_random_curves(length, num_curves, self.sigma, knot, self.randomizer)
+        tt = gen_random_curves(length, num_curves, self.sigma, knot, randomizer=self.randomizer)
         tt_cum = np.cumsum(tt, axis=0)
 
         # Make the last value equal length
-        t_scale = (length - 1) / tt_cum[-1]
-
-        tt_cum *= t_scale
+        tt_cum = (tt_cum - tt_cum[0]) / (tt_cum[-1] - tt_cum[0]) * (length - 1)
         return tt_cum
 
     def _apply_logic(self, org_data: np.ndarray) -> np.ndarray:
@@ -254,18 +263,124 @@ class TimeWarp(Augmenter):
 
 
 class Scale(Augmenter):
-    def __init__(self, scale_range: tuple, p: float = 1, random_seed: Union[int, None] = None):
+    DATA_DEPENDENT_RANDOM = True
+
+    def __init__(self, sigma: float, p: float = 1, random_seed: Union[int, None] = None):
         """
         Multiply the whole data with a scalar
 
         Args:
-            scale_range: a scalar between this range will be generated every run
+            sigma: std for randomly generated scale factor
         """
         super().__init__(p, random_seed)
-        assert len(scale_range) == 2, 'Wrong argument format; expected a tuple of 2 elements.'
-        self.scale_range = scale_range
+        assert sigma >= 0, 'sigma must be non negative'
+        self.sigma = sigma
 
     def _apply_logic(self, org_data: np.ndarray) -> np.ndarray:
-        scale = np.random.uniform(*self.scale_range)
+        # shape [1, channel]
+        scale = self.randomizer.normal(loc=1, scale=self.sigma, size=[1, org_data.shape[1]])
         org_data *= scale
         return org_data
+
+
+class Jittering(Augmenter):
+    DATA_DEPENDENT_RANDOM = True
+
+    def __init__(self, sigma: float, p: float = 1, random_seed: Union[int, None] = None):
+        """
+        Add Gaussian noise to data
+
+        Args:
+            sigma: standard deviation of noise
+        """
+        super().__init__(p, random_seed)
+        self.sigma = sigma
+
+    def _apply_logic(self, org_data: np.ndarray) -> np.ndarray:
+        noise = self.randomizer.normal(loc=0, scale=self.sigma, size=org_data.shape)
+        org_data += noise
+        return org_data
+
+
+class MagnitudeWarp(Augmenter):
+    DATA_DEPENDENT_RANDOM = True
+
+    def __init__(self, sigma: float = 0.2, knot_range: Union[int, list] = 4, p: float = 1,
+                 random_seed: Union[int, None] = None):
+        """
+
+        Args:
+            sigma: warping magnitude (std)
+            knot_range: number of knot to generate a random curve to distort timestamps
+        """
+        super().__init__(p, random_seed)
+        self.sigma = sigma
+        self.knot_range = format_range(knot_range, start_0=True)
+        # add one here because upper bound is exclusive when randomising
+        self.knot_range[1] += 1
+
+    def _apply_logic(self, org_data: np.ndarray) -> np.ndarray:
+        n_knot = self.randomizer.integers(self.knot_range[0], self.knot_range[1])
+        curves = gen_random_curves(len(org_data), num_curves=org_data.shape[1], sigma=self.sigma, knot=n_knot,
+                                   randomizer=self.randomizer)
+        org_data *= curves
+        return org_data
+
+
+class Permutation(Augmenter):
+
+    def __init__(self, num_parts: int, min_part_weight: float, p: float = 1, random_seed: Union[int, None] = None):
+        """
+        Randomly split data into many parts and shuffle them
+
+        Args:
+            num_parts: number of parts to split
+            min_part_weight: minimum length weight of each part;
+                example: weight=0.2, data length=100 => min part length = 100 * 0.2 = 20
+        """
+        super().__init__(p, random_seed)
+        assert num_parts * min_part_weight <= 1, \
+            (f'Can\'t divide array into {num_parts} parts '
+             f'with a minimum length for each part of {min_part_weight * 100}%')
+
+        self.num_parts = num_parts
+        self.min_part_weight = min_part_weight
+
+    def _apply_logic(self, org_data: np.ndarray) -> np.ndarray:
+        # calculate random lengths for N parts
+        max_part_weight = (1 - self.min_part_weight) / (self.num_parts - 1)
+        part_weights = self.randomizer.uniform(self.min_part_weight, max_part_weight, size=self.num_parts)
+        part_weights = part_weights / part_weights.sum() * len(org_data)
+        part_lengths = part_weights.astype(int)
+        part_lengths[-1] = len(org_data) - part_lengths[:-1].sum()
+        part_idx = np.cumsum(part_lengths)[:-1]
+
+        # split data using calculated part lengths
+        parts = np.split(org_data, part_idx)
+
+        # randomly shuffle parts
+        self.randomizer.shuffle(parts)
+        data = np.concatenate(parts)
+        return data
+
+
+if __name__ == '__main__':
+    import matplotlib.pyplot as plt
+
+    data1 = np.arange(0, 10, 0.1).reshape([-1, 1])
+    data2 = np.array([
+        np.arange(10, 20, 0.1),
+        np.arange(10, 20, 0.1) + 1
+    ]).T
+
+    new_data1 = Permutation(num_parts=4, min_part_weight=0.1, random_seed=1).run(data1)
+    new_data2 = Permutation(num_parts=4, min_part_weight=0.1, random_seed=1).run(data2)
+
+    plt.plot(data1, label='org1')
+    plt.plot(data2, label='org2')
+    plt.plot(new_data1, label='aug1')
+    plt.plot(new_data2, label='aug2')
+
+    plt.legend()
+    plt.grid()
+    plt.show()

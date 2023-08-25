@@ -1,5 +1,5 @@
 from typing import List
-
+import bezier
 import numpy as np
 from scipy.interpolate import CubicSpline
 
@@ -49,7 +49,7 @@ def np_mode(array: np.ndarray, exclude_nan: bool = True) -> any:
     return mode_
 
 
-def gen_random_curves(length: int, num_curves: int, sigma=0.2, knot=4,
+def gen_random_curves(length: int, num_curves: int, sigma=0.2, knot=4, method: str = 'bezier',
                       randomizer: np.random._generator.Generator = None):
     """
     Generate random curves
@@ -59,6 +59,8 @@ def gen_random_curves(length: int, num_curves: int, sigma=0.2, knot=4,
         num_curves: number of curves to be generated
         sigma: warping magnitude (std)
         knot: number of turns in the curve(s)
+        method: method to connect random points to form a random curve;
+            currently support [cubic|beizer]; default: bezier
         randomizer: numpy random generator (with seed)
 
     Returns:
@@ -67,8 +69,18 @@ def gen_random_curves(length: int, num_curves: int, sigma=0.2, knot=4,
     xx = np.arange(0, length, (length - 1) / (knot + 1))
     yy = np.random.normal(loc=1.0, scale=sigma, size=(knot + 2, num_curves)) if randomizer is None \
         else randomizer.normal(loc=1.0, scale=sigma, size=(knot + 2, num_curves))
-    x_range = np.arange(length)
-    curves = np.array([CubicSpline(xx, yy[:, i])(x_range) for i in range(num_curves)]).T
+
+    if method == 'bezier':
+        x_range = np.linspace(0, 1, num=length, endpoint=True)
+        curves = [bezier.Curve.from_nodes(np.array([xx, yy[:, i]])).evaluate_multi(x_range)[1]
+                  for i in range(num_curves)]
+    elif method == 'cubic':
+        x_range = np.arange(length)
+        curves = [CubicSpline(xx, yy[:, i])(x_range) for i in range(num_curves)]
+    else:
+        raise ValueError(f'Available methods: [cubic|beizer], but received: {method}')
+
+    curves = np.array(curves).T
     return curves
 
 
@@ -115,9 +127,29 @@ def interval_intersection(intervals: List[List[List[int]]]) -> List[List[int]]:
 
 
 if __name__ == '__main__':
-    res = interval_intersection([
-        [[0, 10], [90, 100]],
-        [[0, 10], [80, 120]],
-        [[0, 10], [12, 50], [51, 120]]
+    import matplotlib.pyplot as plt
+
+    _ = np.asfortranarray([
+        [0.0, 1.0],
+        [0.0, 2.0],
+        [0.0, 3.0],
     ])
-    print(res)
+
+    randomizer = np.random.default_rng(seed=2)
+    cubic_curves = gen_random_curves(length=100, num_curves=2, sigma=0.2, knot=2, method='cubic', randomizer=randomizer)
+
+    randomizer = np.random.default_rng(seed=2)
+    bezier_curves = gen_random_curves(length=100, num_curves=2, sigma=0.2, knot=2, method='bezier',
+                                      randomizer=randomizer)
+
+    plt.subplot(1, 2, 1)
+    plt.plot(cubic_curves[:, 0], label='cubic')
+    plt.plot(bezier_curves[:, 0], label='bezier')
+    plt.legend()
+
+    plt.subplot(1, 2, 2)
+    plt.plot(cubic_curves[:, 1], label='cubic')
+    plt.plot(bezier_curves[:, 1], label='bezier')
+    plt.legend()
+
+    plt.show()
