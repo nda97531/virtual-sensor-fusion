@@ -217,22 +217,19 @@ class HorizontalFlip(Augmenter):
 class TimeWarp(Augmenter):
     DATA_DEPENDENT_RANDOM = False
 
-    def __init__(self, sigma: float = 0.2, knot_range: Union[int, list] = 4,
-                 p: float = 1, random_seed: Union[int, None] = None):
+    def __init__(self, sigma: float = 0.2, knot: int = 4, p: float = 1, random_seed: Union[int, None] = None):
         """
         Time warping augmentation
 
         Args:
             sigma: warping magnitude (std)
-            knot_range: number of knot to generate a random curve to distort timestamps
+            knot: number of knot to generate a random curve to distort timestamps
             p: probability to apply this augmenter each time it is called
             random_seed: random seed for this Augmenter
         """
         super().__init__(p=p, random_seed=random_seed)
         self.sigma = sigma
-        self.knot_range = format_range(knot_range, start_0=True)
-        # add one here because upper bound is exclusive when randomising
-        self.knot_range[1] += 1
+        self.knot = knot
 
     def distort_time_steps(self, length: int, num_curves: int = 1):
         """
@@ -244,8 +241,7 @@ class TimeWarp(Augmenter):
         Returns:
             numpy array shape [length, num_curves]
         """
-        knot = self.randomizer.integers(self.knot_range[0], self.knot_range[1])
-        tt = gen_random_curves(length, num_curves, self.sigma, knot, randomizer=self.randomizer)
+        tt = gen_random_curves(length, num_curves, self.sigma, self.knot, randomizer=self.randomizer)
         tt_cum = np.cumsum(tt, axis=0)
 
         # Make the last value equal length
@@ -265,7 +261,7 @@ class TimeWarp(Augmenter):
 class Scale(Augmenter):
     DATA_DEPENDENT_RANDOM = True
 
-    def __init__(self, sigma: float, p: float = 1, random_seed: Union[int, None] = None):
+    def __init__(self, sigma: float = 0.1, p: float = 1, random_seed: Union[int, None] = None):
         """
         Multiply the whole data with a scalar
 
@@ -329,7 +325,8 @@ class MagnitudeWarp(Augmenter):
 
 class Permutation(Augmenter):
 
-    def __init__(self, num_parts: int, min_part_weight: float, p: float = 1, random_seed: Union[int, None] = None):
+    def __init__(self, num_parts: int = 4, min_part_weight: float = 0.1,
+                 p: float = 1, random_seed: Union[int, None] = None):
         """
         Randomly split data into many parts and shuffle them
 
