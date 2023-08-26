@@ -226,12 +226,12 @@ if __name__ == '__main__':
                 'waist': len(train_cls_dict[list(train_cls_dict.keys())[0]])
             },
             contrastive_loss_func=CMCLoss(temp=0.1),
+            cls_dropout=0.5,
             contrast_feature_dim=None,
         )
         model = VsfModel(
             backbones=backbone,
-            distributor_head=head,
-            dropout=0.5
+            distributor_head=head
         )
 
         # create folder to save result

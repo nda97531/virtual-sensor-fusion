@@ -9,7 +9,7 @@ from vsf.loss_functions.contrastive_loss import ContrastiveLoss
 
 class VsfDistributor(nn.Module):
     def __init__(self, input_dims: dict, num_classes: dict,
-                 contrastive_loss_func: ContrastiveLoss, contrast_feature_dim: int = None,
+                 contrastive_loss_func: ContrastiveLoss, cls_dropout: float = 0.5, contrast_feature_dim: int = None,
                  main_modal: str = None) -> None:
         """
         Distributor for VSF with a single labelled multi-modal dataset.
@@ -19,6 +19,7 @@ class VsfDistributor(nn.Module):
             input_dims: dict[modal name]: input feature dimension (int)
             num_classes: dict[modal name]: number of output classes (int);
                 all keys if this dict must also be presented in `input_dims`
+            cls_dropout: dropout rate before classifier
             contrast_feature_dim: feature dimension for FC before contrastive loss; default: don't use connect FC
             main_modal: name of the main modal
         """
@@ -34,7 +35,7 @@ class VsfDistributor(nn.Module):
             for modal in num_classes.keys()
         })
         self.contrastive_loss_func = contrastive_loss_func
-
+        self.dropout = nn.Dropout(p=cls_dropout)
         self.main_modal = main_modal
 
     def forward(self, x_dict: dict,
@@ -60,7 +61,7 @@ class VsfDistributor(nn.Module):
             cls_mask = {modal: tr.tensor([True] * len(x_dict[modal]))
                         for modal in x_dict.keys()}
         if cls_mask != 'none':
-            class_logit = {modal: self.classifiers[modal](x_dict[modal][cls_mask[modal]])
+            class_logit = {modal: self.classifiers[modal](self.dropout(x_dict[modal][cls_mask[modal]]))
                            for modal in self.classifiers.keys()}
         else:
             class_logit = None

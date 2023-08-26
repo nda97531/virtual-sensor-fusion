@@ -90,20 +90,17 @@ class FusionClsModel(nn.Module):
 
 
 class VsfModel(nn.Module):
-    def __init__(self, backbones: nn.ModuleDict, distributor_head: VsfDistributor,
-                 dropout: float = 0.5) -> None:
+    def __init__(self, backbones: nn.ModuleDict, distributor_head: VsfDistributor) -> None:
         """
-        A feature-level fusion model that concatenates features of backbones before the classifier
+        Combine backbones and heads, including classifier and contrastive loss head
 
         Args:
             backbones: a module dict of backbone models
             distributor_head: model head
-            dropout: dropout rate between backbone and classifier
         """
         super().__init__()
         self.backbones = backbones
         self.distributor = distributor_head
-        self.dropout = nn.Dropout(p=dropout)
 
     def forward(self, x_dict: Dict[str, tr.Tensor], backbone_kwargs: dict = {}, head_kwargs: dict = {}):
         """
@@ -119,7 +116,7 @@ class VsfModel(nn.Module):
                 - contrastive loss (pytorch float)
         """
         x_dict = {
-            modal: self.dropout(self.backbones[modal](tr.permute(x_dict[modal], [0, 2, 1]), **backbone_kwargs))
+            modal: self.backbones[modal](tr.permute(x_dict[modal], [0, 2, 1]), **backbone_kwargs)
             for modal in self.backbones.keys()
             if modal in x_dict.keys()
         }
