@@ -1,7 +1,6 @@
 """
-Exp 1.1
 Single task: classification of all labels
-Single sensor: rankle accelerometer
+Single sensor: concatenated 2 accelerometers
 """
 
 import itertools
@@ -23,11 +22,11 @@ from vsf.flow.torch_callbacks import ModelCheckpoint, EarlyStop
 from vsf.networks.backbone_tcn import TCN
 from vsf.networks.classifier import BasicClassifier
 from vsf.networks.complete_model import BasicClsModel
-from vsf.public_datasets.sfu_imu_dataset import SFUNpyWindow, SFUConst
+from vsf.public_datasets.cmd_fall_dataset import CMDFallNpyWindow, CMDFallConst
 
 
-def load_data(parquet_dir: str, window_size_sec=4, step_size_sec=2, min_step_size_sec=0.5,
-              max_short_window=5) -> dict:
+def load_data(parquet_dir: str, window_size_sec=4, step_size_sec=0.4, 
+              min_step_size_sec=None, max_short_window=None) -> dict:
     """
     Load all the UP-Fall dataset into a dataframe
 
@@ -42,98 +41,93 @@ def load_data(parquet_dir: str, window_size_sec=4, step_size_sec=2, min_step_siz
         a 3-level dict:
             dict[train/valid/test][submodal name][label index] = windows array shape [n, ..., channel]
     """
-    npy_loader = SFUNpyWindow(
+    npy_dataset = CMDFallNpyWindow(
         parquet_root_dir=parquet_dir,
         window_size_sec=window_size_sec,
         step_size_sec=step_size_sec,
         min_step_size_sec=min_step_size_sec,
         max_short_window=max_short_window,
         modal_cols={
-            SFUConst.MODAL: {
-                'rankle_acc': [f'rankle_acc_{axis}(m/s^2)' for axis in ['x', 'y', 'z']]
+            CMDFallConst.MODAL_INERTIA: {
+                'acc': ['wrist_acc_x(m/s^2)', 'wrist_acc_y(m/s^2)', 'wrist_acc_z(m/s^2)']
             }
         }
     )
-    df = npy_loader.run()
-    list_sub_modal = list(itertools.chain.from_iterable(list(sub_dict) for sub_dict in npy_loader.modal_cols.values()))
+    df = npy_dataset.run()
+    list_sub_modal = list(itertools.chain.from_iterable(list(sub_dict) for sub_dict in npy_dataset.modal_cols.values()))
 
     # split TRAIN, VALID, TEST
-    assert np.unique(df['subject']).tolist() == list(range(1, 11))
-    train_subject = {1}
-    test_subject = {3, 5, 7, 9, 10}
-    valid_subject = {2, 4, 6, 8}
-
-    train_set_idx = df['subject'].isin(train_subject)
-    valid_set_idx = df['subject'].isin(valid_subject)
-    assert not (train_set_idx & valid_set_idx).any(), 'Train and valid overlapped'
-    test_set_idx = ~(train_set_idx | valid_set_idx)
-
-    # randomizer = np.random.default_rng(99)
-    # random_idx = randomizer.permutation(len(df))
-    # assert len(random_idx) == 600
-    # train_set_idx = random_idx[:250]
-    # valid_set_idx = random_idx[250:350]
-    # test_set_idx = random_idx[350:600]
-
+    train_set_idx = df['subject'] % 2 != 0
     train_set = df.loc[train_set_idx]
+
+    valid_set_idx = df['subject'] % 10 == 0
     valid_set = df.loc[valid_set_idx]
+
+    test_set_idx = ~(train_set_idx | valid_set_idx)
     test_set = df.loc[test_set_idx]
 
     def concat_data_in_df(df):
         # concat sessions in cells into an array
+        # dict key: modal (including label); value: array shape [num window, widow size, channel]
         modal_dict = {}
         for col in df.columns:
             if col != 'subject':
                 col_data = df[col].tolist()
                 modal_dict[col] = np.concatenate(col_data)
 
+        # construct dict with classes are keys
+        # key lvl 1: modal; key lvl 2: label; value: array shape [num window, widow size, channel]
+        label_list = np.unique(modal_dict['label'])
+        # dict[modal][label index] = window array
         class_dict = defaultdict(dict)
-        for sub_modal in list_sub_modal:
-            for label in [0, 1]:
-                idx = modal_dict['label'] == label
-                class_dict[sub_modal][label] = modal_dict[sub_modal][idx]
+        for label_idx, label_val in enumerate(label_list):
+            # don't count 'unknown' class (class index is 0)
+            if label_idx != 0:
+                idx = modal_dict['label'] == label_val
+                class_dict['acc'][label_idx - 1] = modal_dict['acc'][idx]
+        class_dict = dict(class_dict)
 
         assert list(class_dict.keys()) == list_sub_modal, 'Mismatched submodal list'
         return class_dict
 
-    three_dicts = {
+    results = {
         'train': concat_data_in_df(train_set),
         'valid': concat_data_in_df(valid_set),
         'test': concat_data_in_df(test_set)
     }
-    return three_dicts
+    return results
 
 
 if __name__ == '__main__':
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--device', '-d', required=True)
+    parser.add_argument('--device', '-d', default='cuda:0')
 
     parser.add_argument('--name', '-n', default='exp1_1',
                         help='name of the experiment to create a folder to save weights')
 
     parser.add_argument('--data-folder', '-data',
-                        default='/mnt/data_drive/projects/UCD04 - Virtual sensor fusion/processed_parquet/SFU-IMU',
+                        default='/home/ducanh/parquet_datasets/CMDFall/',
                         help='path to parquet data folder')
 
-    parser.add_argument('--output-folder', '-o', default='./log/sfu',
+    parser.add_argument('--output-folder', '-o', default='./log/cmdfall',
                         help='path to save training logs and model weights')
     args = parser.parse_args()
 
     NUM_REPEAT = 3
     NUM_EPOCH = 300
     LEARNING_RATE = 1e-3
-    WEIGHT_DECAY = 1e-2
+    WEIGHT_DECAY = 0
     EARLY_STOP_PATIENCE = 30
     LR_SCHEDULER_PATIENCE = 15
-    TRAIN_BATCH_SIZE = 16
+    TRAIN_BATCH_SIZE = 32
 
     # load data
     three_dicts = load_data(parquet_dir=args.data_folder)
-    train_dict = three_dicts['train']['rankle_acc']
-    valid_dict = three_dicts['valid']['rankle_acc']
-    test_dict = three_dicts['test']['rankle_acc']
+    train_dict = three_dicts['train']['acc']
+    valid_dict = three_dicts['valid']['acc']
+    test_dict = three_dicts['test']['acc']
     del three_dicts
 
     test_scores = []
@@ -142,11 +136,11 @@ if __name__ == '__main__':
     for _ in range(NUM_REPEAT):
         # create model
         backbone = TCN(
-            input_shape=(200, 3),
+            input_shape=train_dict[0].shape[1:],
             how_flatten='spatial attention gap',
             n_tcn_channels=(64,) * 5 + (128,) * 2,
             tcn_drop_rate=0.5,
-            use_spatial_dropout=False,
+            use_spatial_dropout=True,
             conv_norm='batch',
             attention_conv_norm=''
         )
@@ -169,14 +163,15 @@ if __name__ == '__main__':
             model=model, optimizer=optimizer,
             device=args.device,
             callbacks=[
-                ModelCheckpoint(NUM_EPOCH, model_file_path),
-                EarlyStop(EARLY_STOP_PATIENCE),
-                ReduceLROnPlateau(optimizer=optimizer, mode='min', patience=LR_SCHEDULER_PATIENCE, verbose=True)
-            ]
+                ModelCheckpoint(NUM_EPOCH, model_file_path, smaller_better=False),
+                EarlyStop(EARLY_STOP_PATIENCE, smaller_better=False),
+                ReduceLROnPlateau(optimizer=optimizer, mode='max', patience=LR_SCHEDULER_PATIENCE, verbose=True)
+            ],
+            callback_criterion='f1'
         )
 
         # train and valid
-        augmenter = Rotation3D(angle_range=180, p=1, random_seed=None)
+        augmenter = Rotation3D(angle_range=30)
         train_set = BalancedDataset(deepcopy(train_dict), augmenter=augmenter)
         valid_set = BasicDataset(deepcopy(valid_dict))
         train_loader = DataLoader(train_set, batch_size=TRAIN_BATCH_SIZE, shuffle=True)
