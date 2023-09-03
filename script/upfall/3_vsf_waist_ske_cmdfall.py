@@ -25,8 +25,8 @@ from vsf.networks.backbone_tcn import TCN
 from vsf.networks.complete_model import VsfModel
 from vsf.networks.vsf_distributor import VsfDistributor
 from vsf.loss_functions.contrastive_loss import CMCLoss
-from vsf.public_datasets.cmd_fall_dataset import CMDFallNpyWindow, CMDFallConst
-from vsf.public_datasets.up_fall_dataset import UPFallNpyWindow, UPFallConst
+from har_datasets.har_datasets.cmdfall_dataset import CMDFallNpyWindow, CMDFallConst
+from har_datasets.har_datasets.upfall_dataset import UPFallNpyWindow, UPFallConst
 from vsf.loss_functions.classification_loss import AutoCrossEntropyLoss
 
 

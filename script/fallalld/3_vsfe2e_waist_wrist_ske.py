@@ -25,8 +25,8 @@ from vsf.networks.backbone_tcn import TCN
 from vsf.networks.complete_model import VsfModel
 from vsf.networks.vsf_distributor import VsfDistributor
 from vsf.loss_functions.contrastive_loss import CMCLoss
-from vsf.public_datasets.fallalld_dataset import FallAllDNpyWindow, FallAllDConst
-from vsf.public_datasets.cmd_fall_dataset import CMDFallNpyWindow, CMDFallConst
+from har_datasets.har_datasets.fallalld_dataset import FallAllDNpyWindow, FallAllDConst
+from har_datasets.har_datasets.cmdfall_dataset import CMDFallNpyWindow, CMDFallConst
 
 
 def load_class_data(parquet_dir: str, window_size_sec=4, step_size_sec=2,

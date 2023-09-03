@@ -20,7 +20,7 @@ from vsf.flow.torch_callbacks import ModelCheckpoint, EarlyStop
 from vsf.networks.backbone_tcn import TCN
 from vsf.networks.classifier import BasicClassifier
 from vsf.networks.complete_model import BasicClsModel
-from vsf.public_datasets.fallalld_dataset import FallAllDNpyWindow, FallAllDConst
+from har_datasets.har_datasets.fallalld_dataset import FallAllDNpyWindow, FallAllDConst
 
 
 def load_data(parquet_dir: str, window_size_sec=4, step_size_sec=2,

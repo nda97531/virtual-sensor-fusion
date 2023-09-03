@@ -8,7 +8,7 @@ class AutoCrossEntropyLoss:
         Calculate CE/binary-CE loss from input logit; Plus Entropy loss for more confident if necessary.
 
         Args:
-            cal_confidence_loss: weight of the entropy loss (NOT cross entropy) to make the model more confident
+            confidence_loss_weight: weight of the entropy loss (NOT cross entropy) to make the model more confident
                 (regardless of what the prediction is). If this = 0, don't calculate confidence loss.
         """
         assert 0 <= confidence_loss_weight <= 1, \
@@ -21,7 +21,8 @@ class AutoCrossEntropyLoss:
         Calculate confidence loss
 
         Args:
-            inp: class logit prediction tensor, shape [batch size] if binary classification, else [batch size, num class]
+            inp: class logit prediction tensor, shape [batch size] if binary classification,
+                else [batch size, num class]
             reduce: reduce the batch dimension, accepted values are [mean|none|sum]
 
         Returns:

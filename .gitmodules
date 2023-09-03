@@ -1,0 +1,6 @@
+[submodule "my_py_utils"]
+	path = my_py_utils
+	url = git@github.com:nda97531/my_py_utils.git
+[submodule "har_datasets"]
+	path = har_datasets
+	url = git@github.com:nda97531/har_datasets.git

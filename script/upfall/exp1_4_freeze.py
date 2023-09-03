@@ -25,7 +25,7 @@ from vsf.flow.vsf_flow import VSFFlow
 from vsf.networks.backbone_tcn import TCN
 from vsf.networks.complete_model import VsfModel
 from vsf.networks.vsf_distributor import VsfDistributor
-from vsf.public_datasets.up_fall_dataset import UPFallNpyWindow, UPFallConst
+from har_datasets.har_datasets.upfall_dataset import UPFallNpyWindow, UPFallConst
 from vsf.loss_functions.contrastive_loss import CocoaLoss
 from vsf.networks.classifier import BasicClassifier
 from vsf.networks.complete_model import BasicClsModel

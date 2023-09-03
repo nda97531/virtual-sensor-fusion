@@ -26,7 +26,7 @@ from vsf.networks.backbone_tcn import TCN
 from vsf.networks.complete_model import VsfModel
 from vsf.networks.vsf_distributor import VsfDistributor
 from vsf.loss_functions.contrastive_loss import CMCLoss
-from vsf.public_datasets.cmd_fall_dataset import CMDFallNpyWindow, CMDFallConst
+from har_datasets.har_datasets.cmdfall_dataset import CMDFallNpyWindow, CMDFallConst
 
 
 def split_3_sets(df: pd.DataFrame) -> tuple:
@@ -68,7 +68,7 @@ def load_class_data(parquet_dir: str, window_size_sec=4, step_size_sec=0.4) -> d
         step_size_sec=step_size_sec,
         modal_cols={
             CMDFallConst.MODAL_INERTIA: {
-                'waist': ['waist_acc_x(m/s^2)', 'waist_acc_y(m/s^2)', 'waist_acc_z(m/s^2)']                    
+                'waist': ['waist_acc_x(m/s^2)', 'waist_acc_y(m/s^2)', 'waist_acc_z(m/s^2)']
             },
             CMDFallConst.MODAL_SKELETON: {
                 'ske': [c.format(kinect_id=3) for c in CMDFallConst.SELECTED_SKELETON_COLS]
@@ -133,7 +133,7 @@ def load_unlabelled_data(parquet_dir: str, window_size_sec=4, step_size_sec=1) -
         step_size_sec=step_size_sec,
         modal_cols={
             CMDFallConst.MODAL_INERTIA: {
-                'waist': ['waist_acc_x(m/s^2)', 'waist_acc_y(m/s^2)', 'waist_acc_z(m/s^2)']                     
+                'waist': ['waist_acc_x(m/s^2)', 'waist_acc_y(m/s^2)', 'waist_acc_z(m/s^2)']
             },
             CMDFallConst.MODAL_SKELETON: {
                 'ske': [c.format(kinect_id=3) for c in CMDFallConst.SELECTED_SKELETON_COLS]
@@ -269,7 +269,7 @@ if __name__ == '__main__':
         }
         train_set_cls = BalancedFusionDataset(deepcopy(train_cls_dict), augmenters=augmenter)
         valid_set_cls = FusionDataset(deepcopy(valid_cls_dict))
-        
+
         augmenter = {
             'waist': Rotation3D(angle_range=180),
             'ske': Rotation3D(angle_range=180, rot_axis=np.array([0, 0, 1]))
