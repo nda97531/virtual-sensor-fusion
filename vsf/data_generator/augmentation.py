@@ -4,7 +4,7 @@ import numpy as np
 from loguru import logger
 from transforms3d.axangles import axangle2mat
 
-from my_py_utils.number_array import gen_random_curves
+from my_py_utils.my_py_utils.number_array import gen_random_curves
 
 
 def format_range(x: any, start_0: bool) -> np.ndarray:

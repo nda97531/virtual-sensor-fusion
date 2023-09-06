@@ -22,7 +22,7 @@ from vsf.flow.torch_callbacks import ModelCheckpoint, EarlyStop
 from vsf.networks.backbone_tcn import TCN
 from vsf.networks.classifier import BasicClassifier
 from vsf.networks.complete_model import BasicClsModel
-from har_datasets.har_datasets.cmdfall_dataset import CMDFallNpyWindow, CMDFallConst
+from vahar_datasets_formatter.vahar.datasets.cmdfall_dataset import CMDFallNpyWindow, CMDFallConst
 
 
 def load_data(parquet_dir: str, window_size_sec=4, step_size_sec=0.4, 
