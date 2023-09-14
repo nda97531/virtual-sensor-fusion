@@ -1,12 +1,30 @@
 import itertools
-
 import numpy as np
 import torch as tr
 import torch.nn.functional as F
 from torch import nn
 
 
-def info_nce_loss(modal1: tr.Tensor, modal2: tr.Tensor, temp: float = 1, norm2_eps: float = 1e-6):
+def torch_cosine_similarity(tensor1: tr.Tensor, tensor2: tr.Tensor, norm2_eps: float = 1e-6) -> tr.Tensor:
+    """
+    Calculate pairwise cosine similarity between 2 torch Tensors
+    Args:
+        tensor1: tensor shape [batch size 1, feature]
+        tensor2: tensor shape [batch size 2, feature]
+        norm2_eps: epsilon added to norm2 when calculating cosine similarity to avoid division by 0
+
+    Returns:
+        tensor shape [batch size 1, batch size 2]
+    """
+    # tensor shape [batch, batch]
+    length1 = tr.sqrt((tensor1 ** 2).sum(dim=-1, keepdims=True))
+    length2 = tr.sqrt((tensor2 ** 2).sum(dim=-1, keepdims=True))
+    sim = tr.matmul(tensor1, tensor2.permute([1, 0])) / \
+          tr.maximum(tr.matmul(length1, length2.permute([1, 0])), tr.tensor(norm2_eps))
+    return sim
+
+
+def info_nce_loss(modal1: tr.Tensor, modal2: tr.Tensor, temp: float = 0.1, norm2_eps: float = 1e-6):
     """
     InfoNCE loss between 2 modalities
 
@@ -20,11 +38,7 @@ def info_nce_loss(modal1: tr.Tensor, modal2: tr.Tensor, temp: float = 1, norm2_e
         a pytorch float
     """
     # tensor shape [batch, batch]
-    length1 = tr.sqrt((modal1 ** 2).sum(dim=-1, keepdims=True))
-    length2 = tr.sqrt((modal2 ** 2).sum(dim=-1, keepdims=True))
-    sim = tr.matmul(modal1, modal2.permute([1, 0])) / \
-          tr.maximum(tr.matmul(length1, length2.permute([1, 0])), tr.tensor(norm2_eps))
-
+    sim = torch_cosine_similarity(modal1, modal2, norm2_eps)
     sim = sim / temp
     # create positive idx tensor on the same device as `sim`
     positive_pair_idx = sim.new(np.arange(sim.shape[0])).long()
@@ -47,11 +61,14 @@ class ContrastiveLoss(nn.Module):
 
 
 class CMCLoss(ContrastiveLoss):
-    def __init__(self, main_modal_idx: int = None, temp: float = 1, norm2_eps: float = 1e-6, *args, **kwargs):
+    def __init__(self, sim_loss_weight: float = 0, main_modal_idx: int = None,
+                 temp: float = 0.1, norm2_eps: float = 1e-6, *args, **kwargs):
         """
         CMC loss for multiple modals
 
         Args:
+            sim_loss_weight: include cross similarity loss between modals in each modal pair if this number > 0;
+                pair loss = InfoNCE + (sim_loss_weight * Similarity loss)
             main_modal_idx: index of the main modal in `all_features`,
                 if None, calculate InfoNCE between all possible pairs,
                 if provided, only calculate for pairs containing it
@@ -59,6 +76,7 @@ class CMCLoss(ContrastiveLoss):
             norm2_eps: epsilon added to norm2 when calculating cosine similarity to avoid division by 0
         """
         super().__init__(*args, **kwargs)
+        self.sim_loss_weight = sim_loss_weight
         self.main_modal_idx = main_modal_idx
         self.temp = temp
         self.eps = norm2_eps
@@ -80,15 +98,23 @@ class CMCLoss(ContrastiveLoss):
         num_components = 0
         for modal1_idx, modal2_idx in itertools.combinations(range(len(all_features)), 2):
             if (self.main_modal_idx is None) or (self.main_modal_idx in {modal1_idx, modal2_idx}):
-                error += info_nce_loss(all_features[modal1_idx], all_features[modal2_idx], temp=self.temp,
-                                       norm2_eps=self.eps)
+                pair_loss = info_nce_loss(all_features[modal1_idx], all_features[modal2_idx], temp=self.temp,
+                                          norm2_eps=self.eps)
+                if self.sim_loss_weight != 0:
+                    sim_loss = tr.square(
+                        torch_cosine_similarity(all_features[modal1_idx], all_features[modal1_idx]) -
+                        torch_cosine_similarity(all_features[modal1_idx], all_features[modal2_idx])
+                    ) * self.sim_loss_weight
+                    pair_loss += sim_loss
+
+                error += pair_loss
                 num_components += 1
         error /= num_components
         return error
 
 
 class CocoaLoss(ContrastiveLoss):
-    def __init__(self, temp: float = 1, norm2_eps: float = 1e-6, *args, **kwargs):
+    def __init__(self, temp: float = 0.1, norm2_eps: float = 1e-6, *args, **kwargs):
         """
         Calculate COCOA loss (with Cross Entropy) from features of multiple modals.
         Source: https://github.com/cruiseresearchgroup/COCOA/blob/main/src/losses.py
@@ -141,7 +167,7 @@ class CocoaLoss(ContrastiveLoss):
 
 
 class Cocoa2Loss(ContrastiveLoss):
-    def __init__(self, temp: float = 1, norm2_eps: float = 1e-6, scale_loss: float = 1 / 32, lambda_: float = 3.9e-3,
+    def __init__(self, temp: float = 0.1, norm2_eps: float = 1e-6, scale_loss: float = 1 / 32, lambda_: float = 3.9e-3,
                  *args, **kwargs):
         """
         Calculate COCOA loss (with Cross Entropy) from features of multiple modals.
