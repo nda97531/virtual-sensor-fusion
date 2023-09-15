@@ -235,7 +235,7 @@ if __name__ == '__main__':
             },
             contrastive_loss_func=CMCLoss(temp=0.1),
             cls_dropout=0.5,
-            contrast_feature_dim=None,
+            
         )
         model = VsfModel(
             backbones=backbone,

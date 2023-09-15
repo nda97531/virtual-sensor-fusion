@@ -20,7 +20,7 @@ def ypred_2_categorical(y_pred):
 
         # if binary classification
         else:
-            y_pred = (tr.sigmoid(y_pred.squeeze(1)) >= 0.5).long()
+            y_pred = (y_pred.squeeze(1) >= 0).long()
     return y_pred
 
 

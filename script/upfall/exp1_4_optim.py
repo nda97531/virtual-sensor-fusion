@@ -170,7 +170,7 @@ if __name__ == '__main__':
                 'skeleton': len(train_dict[list(train_dict.keys())[0]])
             },
             contrastive_loss_func=CocoaLoss(temp=0.1),
-            contrast_feature_dim=None,
+            
             main_modal=None
         )
         model = VsfModel(

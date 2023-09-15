@@ -37,6 +37,7 @@ def info_nce_loss(modal1: tr.Tensor, modal2: tr.Tensor, temp: float = 0.1, norm2
     Returns:
         a pytorch float
     """
+    assert modal1.shape == modal2.shape
     # tensor shape [batch, batch]
     sim = torch_cosine_similarity(modal1, modal2, norm2_eps)
     sim = sim / temp
@@ -61,25 +62,26 @@ class ContrastiveLoss(nn.Module):
 
 
 class CMCLoss(ContrastiveLoss):
-    def __init__(self, sim_loss_weight: float = 0, main_modal_idx: int = None,
+    def __init__(self, main_modal_idx: int = None, ignore_submodal: bool = False,
                  temp: float = 0.1, norm2_eps: float = 1e-6, *args, **kwargs):
         """
         CMC loss for multiple modals
 
         Args:
-            sim_loss_weight: include cross similarity loss between modals in each modal pair if this number > 0;
-                pair loss = InfoNCE + (sim_loss_weight * Similarity loss)
             main_modal_idx: index of the main modal in `all_features`,
                 if None, calculate InfoNCE between all possible pairs,
                 if provided, only calculate for pairs containing it
+            ignore_submodal: only relevant if `main_modal_idx` is provided;
+                whether to detach sub-modals when optimising CMC loss
             temp: temperature param
             norm2_eps: epsilon added to norm2 when calculating cosine similarity to avoid division by 0
         """
         super().__init__(*args, **kwargs)
-        self.sim_loss_weight = sim_loss_weight
         self.main_modal_idx = main_modal_idx
         self.temp = temp
         self.eps = norm2_eps
+        # only ignore submodal if a main modal exists
+        self.ignore_submodal = ignore_submodal and (main_modal_idx is not None)
 
     def forward(self, all_features: tr.Tensor):
         """
@@ -91,24 +93,23 @@ class CMCLoss(ContrastiveLoss):
         """
         assert len(all_features) > 1, 'At least 2 modals are required for contrastive loss'
 
-        if len(all_features) == 2:
-            return info_nce_loss(modal1=all_features[0], modal2=all_features[1], temp=self.temp, norm2_eps=self.eps)
-
         error = 0
         num_components = 0
         for modal1_idx, modal2_idx in itertools.combinations(range(len(all_features)), 2):
-            if (self.main_modal_idx is None) or (self.main_modal_idx in {modal1_idx, modal2_idx}):
-                pair_loss = info_nce_loss(all_features[modal1_idx], all_features[modal2_idx], temp=self.temp,
-                                          norm2_eps=self.eps)
-                if self.sim_loss_weight != 0:
-                    sim_loss = tr.square(
-                        torch_cosine_similarity(all_features[modal1_idx], all_features[modal1_idx]) -
-                        torch_cosine_similarity(all_features[modal1_idx], all_features[modal2_idx])
-                    ) * self.sim_loss_weight
-                    pair_loss += sim_loss
-
-                error += pair_loss
+            if self.main_modal_idx is None:
+                error += info_nce_loss(all_features[modal1_idx], all_features[modal2_idx], temp=self.temp,
+                                       norm2_eps=self.eps)
                 num_components += 1
+
+            elif self.main_modal_idx in {modal1_idx, modal2_idx}:
+                sub_modal_idx = modal2_idx if modal1_idx == self.main_modal_idx else modal1_idx
+                modal1_feat = all_features[self.main_modal_idx]
+                modal2_feat = all_features[sub_modal_idx]
+                if self.ignore_submodal:
+                    modal2_feat = modal2_feat.detach()
+                error += info_nce_loss(modal1_feat, modal2_feat, temp=self.temp, norm2_eps=self.eps)
+                num_components += 1
+
         error /= num_components
         return error
 

@@ -5,7 +5,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from vsf.flow.base_flow import BaseFlow
-from vsf.flow.flow_functions import f1_score_from_prob
+from vsf.flow.flow_functions import f1_score_from_prob, ypred_2_categorical
 
 
 class SingleTaskFlow(BaseFlow):
@@ -74,7 +74,7 @@ class SingleTaskFlow(BaseFlow):
             y_pred.append(pred)
 
         y_true = tr.concatenate(y_true).to('cpu')
-        y_pred = tr.concatenate(y_pred).to('cpu').argmax(dim=-1)
+        y_pred = ypred_2_categorical(tr.concatenate(y_pred)).to('cpu')
         report = metrics.classification_report(y_true, y_pred, digits=4, output_dict=True)
         report = pd.DataFrame(report)
         return report

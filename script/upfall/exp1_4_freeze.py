@@ -191,7 +191,7 @@ if __name__ == '__main__':
                 'wrist_acc': len(train_dict[list(train_dict.keys())[0]])
             },
             contrastive_loss_func=CocoaLoss(temp=0.1),
-            contrast_feature_dim=None,
+            
         )
         model = VsfModel(
             backbones=backbone,

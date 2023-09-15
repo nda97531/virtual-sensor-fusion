@@ -236,8 +236,7 @@ if __name__ == '__main__':
                 'ske': len(train_cls_dict[list(train_cls_dict.keys())[0]])
             },
             contrastive_loss_func=CMCLoss(temp=0.1),
-            cls_dropout=0.5,
-            contrast_feature_dim=None,
+            cls_dropout=0.5
         )
         model = VsfModel(
             backbones=backbone,

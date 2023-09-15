@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from vsf.flow.base_flow import BaseFlow
-from vsf.flow.flow_functions import f1_score_from_prob
+from vsf.flow.flow_functions import f1_score_from_prob, ypred_2_categorical
 
 
 def mix_batch(x_cls: dict, y_cls: tr.Tensor, x_contrast: dict) -> tuple:
@@ -23,8 +23,8 @@ def mix_batch(x_cls: dict, y_cls: tr.Tensor, x_contrast: dict) -> tuple:
     Returns:
         - dict[modal] = data tensor; new batch size = cls batch size + contrast batch size;
             bs of each modal is different because some modals are not used for all tasks
-        - mask cls dict, same, format as the dict above
-        - mask contrast dict, same, format as the dict above
+        - mask cls dict, same format as the dict above
+        - mask contrast dict, same format as the dict above
         - classification label tensor
     """
     # batch size of classification and contrastive learning data
@@ -171,7 +171,8 @@ class VsfE2eFlow(BaseFlow):
 
         # calculate score report
         y_true = tr.concatenate(y_true).to('cpu')
-        y_preds = {modal: tr.concatenate(y_preds[modal]).argmax(dim=-1).to('cpu') for modal in y_preds.keys()}
+        y_preds = {modal: ypred_2_categorical(tr.concatenate(y_preds[modal])).to('cpu') 
+                   for modal in y_preds.keys()}
         reports = {
             modal: pd.DataFrame(metrics.classification_report(y_true, y_preds[modal], digits=4, output_dict=True))
             for modal in y_preds.keys()
@@ -181,11 +182,6 @@ class VsfE2eFlow(BaseFlow):
             reports[modal].index = [f'{modal}_{name}' for name in reports[modal].index]
         report = pd.concat(reports.values())
         return report
-
-
-class VsfFreezeFlow(BaseFlow):
-    pass
-    # TODO
 
 
 if __name__ == '__main__':
