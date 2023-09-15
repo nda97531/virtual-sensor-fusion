@@ -90,7 +90,7 @@ class FusionClsModel(nn.Module):
 
 class VsfModel(nn.Module):
     def __init__(self, backbones: nn.ModuleDict, distributor_head: VsfDistributor,
-                 connect_feature_dims: Union[int, dict] = None) -> None:
+                 apply_fusion:bool=False, connect_feature_dims: Union[int, dict] = None) -> None:
         """
         Combine backbones and heads, including classifier and contrastive loss head
 
@@ -110,10 +110,13 @@ class VsfModel(nn.Module):
         elif isinstance(connect_feature_dims, list) or isinstance(connect_feature_dims, tuple):
             connect_feature_dims = {key: connect_feature_dims for key in backbones.keys()}
 
+        self.apply_fusion = apply_fusion
         self.connect_fc = nn.ModuleDict({
             modal: nn.Linear(in_feat, out_feat)
             for modal, (in_feat, out_feat) in connect_feature_dims.items()
         })
+        if apply_fusion:
+            assert ('fusion_contrast' in self.connect_fc.keys()) or ('fusion_cls' in self.connect_fc.keys())
 
     def forward(self, x_dict: Dict[str, tr.Tensor], backbone_kwargs: dict = {}, head_kwargs: dict = {}):
         """
@@ -133,24 +136,28 @@ class VsfModel(nn.Module):
         x_dict = {
             modal: self.backbones[modal](tr.permute(x_dict[modal], [0, 2, 1]), **backbone_kwargs)
             for modal in self.backbones.keys()
+            if modal in x_dict
         }
         # add fusion feature to x_dict, cls and contrast fusion are done separately because they may use
         # different number of modals
-        if 'fusion_cls' in self.connect_fc.keys():
-            x_dict['fusion_cls'] = tr.cat([
+        if self.apply_fusion:
+            x_fus_cls = [
                 feat[head_kwargs['cls_mask'][modal]]
                 for modal, feat in x_dict.items() if head_kwargs['cls_mask'][modal].any()
-            ], dim=1)
-            head_kwargs['cls_mask']['fusion_cls'] = tr.tensor([True] * len(x_dict['fusion_cls']))
-            head_kwargs['contrast_mask']['fusion_cls'] = tr.tensor([False] * len(x_dict['fusion_cls']))
+            ]
+            if len(x_fus_cls):
+                x_dict['fusion_cls'] = tr.cat(x_fus_cls, dim=1)
+                head_kwargs['cls_mask']['fusion_cls'] = tr.tensor([True] * len(x_dict['fusion_cls']))
+                head_kwargs['contrast_mask']['fusion_cls'] = tr.tensor([False] * len(x_dict['fusion_cls']))
 
-        if 'fusion_contrast' in self.connect_fc.keys():
-            x_dict['fusion_contrast'] = tr.cat([
+            x_fus_contrast = [
                 feat[head_kwargs['contrast_mask'][modal]]
                 for modal, feat in x_dict.items() if head_kwargs['contrast_mask'][modal].any()
-            ], dim=1)
-            head_kwargs['contrast_mask']['fusion_contrast'] = tr.tensor([True] * len(x_dict['fusion_contrast']))
-            head_kwargs['cls_mask']['fusion_contrast'] = tr.tensor([False] * len(x_dict['fusion_contrast']))
+            ]
+            if len(x_fus_contrast):
+                x_dict['fusion_contrast'] = tr.cat(x_fus_contrast, dim=1)
+                head_kwargs['contrast_mask']['fusion_contrast'] = tr.tensor([True] * len(x_dict['fusion_contrast']))
+                head_kwargs['cls_mask']['fusion_contrast'] = tr.tensor([False] * len(x_dict['fusion_contrast']))
 
         # run connect FCs, keep order of x_dict
         x_dict = {

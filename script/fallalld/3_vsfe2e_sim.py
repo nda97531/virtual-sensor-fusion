@@ -249,6 +249,7 @@ if __name__ == '__main__':
         )
         model = VsfModel(
             backbones=backbone, distributor_head=head,
+            apply_fusion=True,
             connect_feature_dims={'fusion_contrast': [384, 128]}
         )
 

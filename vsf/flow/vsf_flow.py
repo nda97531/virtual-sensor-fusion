@@ -129,18 +129,36 @@ class VsfE2eFlow(BaseFlow):
         for x, y in dataloader['cls']:
             x = self.tensor_to_device(x)
             y = y.to(self.device)
-            cls_logit_dict, _ = self.model(x, head_kwargs={'cls_mask': 'all', 'contrast_mask': 'none'})
+
+            cls_mask = tr.tensor([True] * len(y))
+            contrast_mask = tr.tensor([False] * len(y))
+            cls_logit_dict, _ = self.model(
+                x,
+                head_kwargs={
+                    'cls_mask': {modal: cls_mask for modal in x.keys()},
+                    'contrast_mask': {modal: contrast_mask for modal in x.keys()}
+                }
+            )
             cls_loss = sum(self.cls_loss_fn(logit, y) for logit in cls_logit_dict.values()) / len(cls_logit_dict)
 
             valid_cls_loss += cls_loss.item()
             y_true.append(y)
             for modal in cls_logit_dict.keys():
-                y_preds[modal].append(cls_logit_dict.get(modal))
+                y_preds[modal].append(cls_logit_dict[modal])
 
         # run contrast data
         for x in dataloader['contrast']:
             x = self.tensor_to_device(x)
-            _, contrast_loss = self.model(x, head_kwargs={'cls_mask': 'none', 'contrast_mask': 'all'})
+
+            cls_mask = tr.tensor([False] * len(next(iter(x.values()))))
+            contrast_mask = ~cls_mask
+            _, contrast_loss = self.model(
+                x,
+                head_kwargs={
+                    'cls_mask': {modal: cls_mask for modal in x.keys()},
+                    'contrast_mask': {modal: contrast_mask for modal in x.keys()}
+                }
+            )
             valid_contrast_loss += contrast_loss.item()
 
         # record epoch log
@@ -164,10 +182,19 @@ class VsfE2eFlow(BaseFlow):
         for x, y in dataloader:
             x = self.tensor_to_device(x)
             y = y.to(self.device)
-            class_logit_dict, _ = model(x, head_kwargs={'cls_mask': 'all', 'contrast_mask': 'none'})
+
+            cls_mask = tr.tensor([True] * len(y))
+            contrast_mask = tr.tensor([False] * len(y))
+            cls_logit_dict, _ = model(
+                x,
+                head_kwargs={
+                    'cls_mask': {modal: cls_mask for modal in x.keys()},
+                    'contrast_mask': {modal: contrast_mask for modal in x.keys()}
+                }
+            )
             y_true.append(y)
-            for modal in class_logit_dict.keys():
-                y_preds[modal].append(class_logit_dict.get(modal))
+            for modal in cls_logit_dict.keys():
+                y_preds[modal].append(cls_logit_dict[modal])
 
         # calculate score report
         y_true = tr.concatenate(y_true).to('cpu')

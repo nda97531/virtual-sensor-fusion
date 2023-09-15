@@ -32,16 +32,14 @@ class VsfDistributor(nn.Module):
         self.contrastive_loss_func = contrastive_loss_func
         self.dropout = nn.Dropout(p=cls_dropout)
 
-    def forward(self, x_dict: dict,
-                cls_mask: Union[dict, str] = 'all', contrast_mask: Union[dict, str] = 'all') -> tuple:
+    def forward(self, x_dict: dict, cls_mask: dict = None, contrast_mask: dict = None) -> tuple:
         """
         Run forward pass of the distributor
 
         Args:
             x_dict: dict, keys are modals, values shape [batch size, feature],
                 samples with the same index in batches are of the same time T.
-            cls_mask: dict[modal] = indices within a batch of samples used for classification;
-                besides Tensor mask, string values [all|none] are acceptable
+            cls_mask: dict[modal] = indices within a batch of samples used for classification
             contrast_mask: same as `cls_mask` but for contrastive loss
 
         Returns:
@@ -51,23 +49,20 @@ class VsfDistributor(nn.Module):
                 - contrastive loss (pytorch float; None if `cal_loss` == False)
         """
         # classification
-        if cls_mask == 'all':
-            cls_mask = {modal: tr.tensor([True] * len(x_dict[modal]))
-                        for modal in x_dict.keys() if 'contrast' not in modal}
-        if cls_mask != 'none':
-            class_logit = {modal: self.classifiers[modal](self.dropout(x_dict[modal][cls_mask[modal]]))
-                           for modal in self.classifiers.keys()}
-        else:
-            class_logit = None
+        class_logit = {
+            modal: self.classifiers[modal](self.dropout(x_dict[modal][cls_mask[modal]]))
+            for modal in self.classifiers.keys()
+            if modal in x_dict
+        }
 
-        # contrastive
-        if contrast_mask == 'all':
-            contrast_mask = {modal: tr.tensor([True] * len(x_dict[modal]))
-                             for modal in x_dict.keys() if 'cls' not in modal}
-        if contrast_mask != 'none':
-            # features for contrastive loss
-            contrast_features = tr.stack([x_dict[modal][contrast_mask[modal]]
-                                          for modal in self.input_dims.keys() if contrast_mask[modal].any()])
+        # features for contrastive loss
+        contrast_features = [
+            x_dict[modal][contrast_mask[modal]]
+            for modal in self.input_dims.keys()
+            if modal in x_dict and contrast_mask[modal].any()
+        ]
+        if len(contrast_features):
+            contrast_features = tr.stack(contrast_features)
             # calculate contrastive loss
             contrast_loss = self.contrastive_loss_func(contrast_features)
         else:
