@@ -232,18 +232,17 @@ if __name__ == '__main__':
         num_cls = len(train_cls_dict[list(train_cls_dict.keys())[0]])
         head = VsfDistributor(
             input_dims={
-                modal: 128 for modal in list(backbone.keys()) + ['fusion_contrast', 'fusion_cls']
+                modal: 128 for modal in list(backbone.keys()) + [VsfModel.MODAL_FUSION_CTR]
             },  # affect contrast loss order
             num_classes={
-                'acc': num_cls, 'ske': num_cls, 'fusion_cls': num_cls
+                'acc': num_cls, 'ske': num_cls
             },  # affect class logit order
             contrastive_loss_func=CMCLoss(),
             cls_dropout=0.5
         )
         model = VsfModel(
             backbones=backbone, distributor_head=head,
-            apply_fusion=True,
-            connect_feature_dims={'fusion_cls': [256, 128], 'fusion_contrast': [256, 128]}
+            connect_feature_dims={VsfModel.MODAL_FUSION_CTR: [256, 128]}
         )
 
         # create folder to save result
