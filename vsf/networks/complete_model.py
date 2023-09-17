@@ -60,7 +60,7 @@ class FusionClsModel(nn.Module):
             modal: nn.Linear(backbone_output_dims[modal], backbone_output_dims[modal])
             if backbone_output_dims[modal] else nn.Identity()
             for modal in backbones.keys()
-        })
+        }) # activation function is implemented in `forward` function
 
     def forward(self, x_dict: Dict[str, tr.Tensor], backbone_kwargs: dict = {}, classifier_kwargs: dict = {}):
         """
@@ -93,7 +93,7 @@ class VsfModel(nn.Module):
     MODAL_FUSION_CTR = 'fusion_contrast'
 
     def __init__(self, backbones: nn.ModuleDict, distributor_head: VsfDistributor,
-                 connect_feature_dims: Union[int, dict] = None) -> None:
+                 connect_feature_dims: Union[int, dict] = {}) -> None:
         """
         Combine backbones and heads, including classifier and contrastive loss head
 
@@ -108,13 +108,10 @@ class VsfModel(nn.Module):
         self.distributor = distributor_head
 
         # connect FCs, used between backbone and distributor
-        if connect_feature_dims is None:
-            connect_feature_dims = {}
-        elif isinstance(connect_feature_dims, list) or isinstance(connect_feature_dims, tuple):
+        if isinstance(connect_feature_dims, list) or isinstance(connect_feature_dims, tuple):
             connect_feature_dims = {key: connect_feature_dims for key in backbones.keys()}
-
         self.connect_fc = nn.ModuleDict({
-            modal: nn.Linear(in_feat, out_feat)
+            modal: nn.Sequential(nn.Linear(in_feat, out_feat), nn.ReLU())
             for modal, (in_feat, out_feat) in connect_feature_dims.items()
         })
 
