@@ -42,7 +42,7 @@ def info_nce_loss(modal1: tr.Tensor, modal2: tr.Tensor, temp: float = 0.1, norm2
     sim = torch_cosine_similarity(modal1, modal2, norm2_eps)
     sim = sim / temp
     # create positive idx tensor on the same device as `sim`
-    positive_pair_idx = sim.new_tensor(range(sim.shape[0]), dtype=tr.long)
+    positive_pair_idx = sim.new(np.arange(sim.shape[0])).long()
     error = F.cross_entropy(input=sim, target=positive_pair_idx)
     return error
 
@@ -162,7 +162,7 @@ class CocoaLoss(ContrastiveLoss):
 
         probs = pos_similarity / (pos_similarity + neg_similarity)
         # create positive index tensor on the same device as `probs`
-        pos_idx = probs.new_tensor(np.ones(batch_size))
+        pos_idx = probs.new(np.ones(batch_size))
         error = F.binary_cross_entropy(input=probs, target=pos_idx)
         return error
 
