@@ -166,17 +166,17 @@ if __name__ == '__main__':
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--device', '-d', default='cuda:0')
+    parser.add_argument('--device', '-d', default='cpu')
 
-    parser.add_argument('--name', '-n', required=True,
+    parser.add_argument('--name', '-n', default='debug',
                         help='name of the experiment to create a folder to save weights')
 
     parser.add_argument('--class-data-folder', '-lbl',
-                        default='/home/ducanh/parquet_datasets/UP-Fall/',
+                        default='/mnt/data_partition/UCD/UCD04 - Virtual sensor fusion/processed_parquet/UP-Fall',
                         help='path to parquet data folder - classification task')
 
     parser.add_argument('--unlabelled-data-folder', '-ulb',
-                        default='/home/ducanh/parquet_datasets/UP-Fall/',
+                        default='/mnt/data_partition/UCD/UCD04 - Virtual sensor fusion/processed_parquet/UP-Fall',
                         help='path to parquet data folder - contrastive learning task')
 
     parser.add_argument('--output-folder', '-o', default='./log/upfall',
@@ -234,17 +234,17 @@ if __name__ == '__main__':
         num_cls = len(train_cls_dict[list(train_cls_dict.keys())[0]])
         head = VsfDistributor(
             input_dims={
-                modal: 128 for modal in list(backbone.keys()) + [VsfModel.MODAL_FUSION_CTR]
+                modal: 128 for modal in list(backbone.keys()) + [VsfModel.MODAL_FUSE_CTR]
             },  # affect contrast loss order
             num_classes={
                 'waist': num_cls, 'ske': num_cls
             },  # affect class logit order
             contrastive_loss_func=CMCLoss(),
-            cls_dropout=0.5
+            modal_cls_reversal_lambda=1.
         )
         model = VsfModel(
             backbones=backbone, distributor_head=head,
-            connect_feature_dims={VsfModel.MODAL_FUSION_CTR: [256, 128]}
+            connect_feature_dims={VsfModel.MODAL_FUSE_CTR: [256, 128]}
         )
 
         # create folder to save result

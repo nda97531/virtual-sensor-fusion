@@ -232,7 +232,7 @@ if __name__ == '__main__':
         num_cls = len(train_cls_dict[list(train_cls_dict.keys())[0]])
         head = VsfDistributor(
             input_dims={
-                modal: 128 for modal in list(backbone.keys()) + [VsfModel.MODAL_FUSION_CTR]
+                modal: 128 for modal in list(backbone.keys()) + [VsfModel.MODAL_FUSE_CTR]
             },  # affect contrast loss order
             num_classes={
                 'acc': num_cls, 'ske': num_cls
@@ -242,7 +242,7 @@ if __name__ == '__main__':
         )
         model = VsfModel(
             backbones=backbone, distributor_head=head,
-            connect_feature_dims={VsfModel.MODAL_FUSION_CTR: [256, 128]}
+            connect_feature_dims={VsfModel.MODAL_FUSE_CTR: [256, 128]}
         )
 
         # create folder to save result

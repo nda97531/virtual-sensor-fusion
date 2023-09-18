@@ -67,8 +67,7 @@ class VsfE2eFlow(BaseFlow):
         num_iter = min(len(dl) for dl in dataloader.values())
         dataloader = {k: iter(dl) for k, dl in dataloader.items()}
 
-        train_cls_loss = 0
-        train_contrast_loss = 0
+        training_log = defaultdict(float)
         y_true = []
         y_preds = defaultdict(list)
 
@@ -86,11 +85,12 @@ class VsfE2eFlow(BaseFlow):
             x_dict, cls_mask, contrast_mask, y_cls = mix_batch(x_cls, y_cls, x_contrast)
 
             # compute prediction
-            cls_logit_dict, contrast_loss = self.model(x_dict, head_kwargs={'cls_mask': cls_mask,
-                                                                            'contrast_mask': contrast_mask})
-
+            cls_logit_dict, contrast_loss, modal_cls_loss = self.model(
+                x_dict,
+                head_kwargs={'cls_mask': cls_mask, 'contrast_mask': contrast_mask}
+            )
             cls_loss = sum(self.cls_loss_fn(logit, y_cls) for logit in cls_logit_dict.values()) / len(cls_logit_dict)
-            loss = cls_loss + contrast_loss
+            loss = cls_loss + contrast_loss + modal_cls_loss
 
             # optimise
             self.optimizer.zero_grad()
@@ -98,18 +98,17 @@ class VsfE2eFlow(BaseFlow):
             self.optimizer.step()
 
             # record batch log
-            train_cls_loss += cls_loss.item()
-            train_contrast_loss += contrast_loss.item()
+            training_log['cls_loss'] += cls_loss.item()
+            training_log['contrast_loss'] += contrast_loss.item()
+            training_log['modal_cls_loss'] += modal_cls_loss.item()
             y_true.append(y_cls)
             for modal in cls_logit_dict.keys():
                 y_preds[modal].append(cls_logit_dict.get(modal))
 
         # record epoch log
         # losses
-        train_cls_loss /= num_iter
-        train_contrast_loss /= num_iter
-        training_log = {'loss': train_cls_loss + train_contrast_loss,
-                        'cls loss': train_cls_loss, 'contrastive loss': train_contrast_loss}
+        training_log = {k: v / num_iter for k, v in training_log.items()}
+        training_log['loss'] = sum(training_log.values())
         # metric scores
         y_true = tr.concatenate(y_true).to('cpu')
         for modal in y_preds.keys():
@@ -119,8 +118,7 @@ class VsfE2eFlow(BaseFlow):
         return training_log
 
     def _valid_epoch(self, dataloader: Dict[str, DataLoader]) -> dict:
-        valid_cls_loss = 0
-        valid_contrast_loss = 0
+        valid_log = defaultdict(float)
         y_true = []
         y_preds = defaultdict(list)
 
@@ -132,7 +130,7 @@ class VsfE2eFlow(BaseFlow):
 
             cls_mask = tr.tensor([True] * len(y))
             contrast_mask = tr.tensor([False] * len(y))
-            cls_logit_dict, _ = self.model(
+            cls_logit_dict, _, _ = self.model(
                 x,
                 head_kwargs={
                     'cls_mask': {modal: cls_mask for modal in x.keys()},
@@ -141,7 +139,7 @@ class VsfE2eFlow(BaseFlow):
             )
             cls_loss = sum(self.cls_loss_fn(logit, y) for logit in cls_logit_dict.values()) / len(cls_logit_dict)
 
-            valid_cls_loss += cls_loss.item()
+            valid_log['cls_loss'] += cls_loss.item()
             y_true.append(y)
             for modal in cls_logit_dict.keys():
                 y_preds[modal].append(cls_logit_dict[modal])
@@ -152,21 +150,22 @@ class VsfE2eFlow(BaseFlow):
 
             cls_mask = tr.tensor([False] * len(next(iter(x.values()))))
             contrast_mask = ~cls_mask
-            _, contrast_loss = self.model(
+            _, contrast_loss, modal_cls_loss = self.model(
                 x,
                 head_kwargs={
                     'cls_mask': {modal: cls_mask for modal in x.keys()},
                     'contrast_mask': {modal: contrast_mask for modal in x.keys()}
                 }
             )
-            valid_contrast_loss += contrast_loss.item()
+            valid_log['contrast_loss'] += contrast_loss.item()
+            valid_log['modal_cls_loss'] += modal_cls_loss.item()
 
         # record epoch log
         # losses
-        valid_cls_loss /= len(dataloader['cls'])
-        valid_contrast_loss /= len(dataloader['contrast'])
-        valid_log = {'loss': valid_cls_loss + valid_contrast_loss,
-                     'cls loss': valid_cls_loss, 'contrastive loss': valid_contrast_loss}
+        valid_log['cls_loss'] /= len(dataloader['cls'])
+        valid_log['contrast_loss'] /= len(dataloader['contrast'])
+        valid_log['modal_cls_loss'] /= len(dataloader['contrast'])
+        valid_log['loss'] = sum(valid_log.values())
         # metric scores
         y_true = tr.concatenate(y_true).to('cpu')
         for modal in y_preds.keys():
@@ -185,7 +184,7 @@ class VsfE2eFlow(BaseFlow):
 
             cls_mask = tr.tensor([True] * len(y))
             contrast_mask = tr.tensor([False] * len(y))
-            cls_logit_dict, _ = model(
+            cls_logit_dict, _, _ = model(
                 x,
                 head_kwargs={
                     'cls_mask': {modal: cls_mask for modal in x.keys()},
@@ -198,7 +197,7 @@ class VsfE2eFlow(BaseFlow):
 
         # calculate score report
         y_true = tr.concatenate(y_true).to('cpu')
-        y_preds = {modal: ypred_2_categorical(tr.concatenate(y_preds[modal])).to('cpu') 
+        y_preds = {modal: ypred_2_categorical(tr.concatenate(y_preds[modal])).to('cpu')
                    for modal in y_preds.keys()}
         reports = {
             modal: pd.DataFrame(metrics.classification_report(y_true, y_preds[modal], digits=4, output_dict=True))

@@ -89,8 +89,8 @@ class FusionClsModel(nn.Module):
 
 
 class VsfModel(nn.Module):
-    MODAL_FUSION_CLS = 'fusion_cls'
-    MODAL_FUSION_CTR = 'fusion_contrast'
+    MODAL_FUSE_CLS = 'fusion_cls'
+    MODAL_FUSE_CTR = 'fusion_contrast'
 
     def __init__(self, backbones: nn.ModuleDict, distributor_head: VsfDistributor,
                  connect_feature_dims: Union[int, dict] = {}) -> None:
@@ -115,11 +115,11 @@ class VsfModel(nn.Module):
             for modal, (in_feat, out_feat) in connect_feature_dims.items()
         })
 
-        self.apply_fusion_cls = (self.MODAL_FUSION_CLS in self.connect_fc.keys()) or \
-            (self.MODAL_FUSION_CLS in self.distributor.classifiers.keys())
-        
-        self.apply_fusion_ctr = (self.MODAL_FUSION_CTR in self.connect_fc.keys()) or \
-            (self.MODAL_FUSION_CTR in self.distributor.input_dims.keys())
+        self.apply_fusion_cls = (self.MODAL_FUSE_CLS in self.connect_fc.keys()) or \
+                                (self.MODAL_FUSE_CLS in self.distributor.classifiers.keys())
+
+        self.apply_fusion_ctr = (self.MODAL_FUSE_CTR in self.connect_fc.keys()) or \
+                                (self.MODAL_FUSE_CTR in self.distributor.input_dims.keys())
 
     def forward(self, x_dict: Dict[str, tr.Tensor], backbone_kwargs: dict = {}, head_kwargs: dict = {}):
         """
@@ -149,9 +149,9 @@ class VsfModel(nn.Module):
                 for modal, feat in x_dict.items() if head_kwargs['cls_mask'][modal].any()
             ]
             if len(x_fus_cls):
-                x_dict[self.MODAL_FUSION_CLS] = tr.cat(x_fus_cls, dim=1)
-                head_kwargs['cls_mask'][self.MODAL_FUSION_CLS] = tr.tensor([True] * len(x_dict[self.MODAL_FUSION_CLS]))
-                head_kwargs['contrast_mask'][self.MODAL_FUSION_CLS] = tr.tensor([False] * len(x_dict[self.MODAL_FUSION_CLS]))
+                x_dict[self.MODAL_FUSE_CLS] = tr.cat(x_fus_cls, dim=1)
+                head_kwargs['cls_mask'][self.MODAL_FUSE_CLS] = tr.tensor([True] * len(x_dict[self.MODAL_FUSE_CLS]))
+                head_kwargs['contrast_mask'][self.MODAL_FUSE_CLS] = tr.tensor([False] * len(x_dict[self.MODAL_FUSE_CLS]))
 
         if self.apply_fusion_ctr:
             x_fus_contrast = [
@@ -159,9 +159,9 @@ class VsfModel(nn.Module):
                 for modal, feat in x_dict.items() if head_kwargs['contrast_mask'][modal].any()
             ]
             if len(x_fus_contrast):
-                x_dict[self.MODAL_FUSION_CTR] = tr.cat(x_fus_contrast, dim=1)
-                head_kwargs['contrast_mask'][self.MODAL_FUSION_CTR] = tr.tensor([True] * len(x_dict[self.MODAL_FUSION_CTR]))
-                head_kwargs['cls_mask'][self.MODAL_FUSION_CTR] = tr.tensor([False] * len(x_dict[self.MODAL_FUSION_CTR]))
+                x_dict[self.MODAL_FUSE_CTR] = tr.cat(x_fus_contrast, dim=1)
+                head_kwargs['contrast_mask'][self.MODAL_FUSE_CTR] = tr.tensor([True] * len(x_dict[self.MODAL_FUSE_CTR]))
+                head_kwargs['cls_mask'][self.MODAL_FUSE_CTR] = tr.tensor([False] * len(x_dict[self.MODAL_FUSE_CTR]))
 
         # run connect FCs, keep order of x_dict
         x_dict = {

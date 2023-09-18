@@ -5,8 +5,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from loguru import logger
 
-from .conv import Conv1dBlock
-from .conv_attention import CBAM, SpatialGate, ChannelGate
+from vsf.layers.conv import Conv1dBlock
+from vsf.layers.conv_attention import CBAM, SpatialGate, ChannelGate
 
 
 def flatten_by_gap(x):
