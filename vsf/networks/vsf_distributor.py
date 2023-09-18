@@ -80,7 +80,8 @@ class VsfDistributor(nn.Module):
             if modal in x_dict and contrast_mask[modal].any()
         }
         if len(contrast_features):
-            modal_indices = tr.tensor(list(contrast_features.keys()), dtype=tr.long)
+            modal_indices = next(iter(contrast_features.values())).new_tensor(
+                list(contrast_features.keys()), dtype=tr.long)
             # shape [modal, batch size, feature]
             contrast_features = tr.stack(list(contrast_features.values()))
             # calculate contrastive loss
