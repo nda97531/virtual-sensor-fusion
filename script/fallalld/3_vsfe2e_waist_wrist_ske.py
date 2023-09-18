@@ -16,17 +16,17 @@ from loguru import logger
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
 
+from vahar_datasets_formatter.vahar.datasets.cmdfall_dataset import CMDFallNpyWindow, CMDFallConst
+from vahar_datasets_formatter.vahar.datasets.fallalld_dataset import FallAllDNpyWindow, FallAllDConst
 from vsf.data_generator.augmentation import Rotation3D
 from vsf.data_generator.classification_data_gen import FusionDataset, BalancedFusionDataset
 from vsf.data_generator.unlabelled_data_gen import UnlabelledFusionDataset
 from vsf.flow.torch_callbacks import ModelCheckpoint, EarlyStop
 from vsf.flow.vsf_flow import VsfE2eFlow
+from vsf.loss_functions.contrastive_loss import CMCLoss
 from vsf.networks.backbone_tcn import TCN
 from vsf.networks.complete_model import VsfModel
 from vsf.networks.vsf_distributor import VsfDistributor
-from vsf.loss_functions.contrastive_loss import CMCLoss
-from vahar_datasets_formatter.vahar.datasets.fallalld_dataset import FallAllDNpyWindow, FallAllDConst
-from vahar_datasets_formatter.vahar.datasets.cmdfall_dataset import CMDFallNpyWindow, CMDFallConst
 
 
 def load_class_data(parquet_dir: str, window_size_sec=4, step_size_sec=2,

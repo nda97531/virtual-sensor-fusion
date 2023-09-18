@@ -16,18 +16,18 @@ from loguru import logger
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
 
+from vahar_datasets_formatter.vahar.datasets.cmdfall_dataset import CMDFallNpyWindow, CMDFallConst
+from vahar_datasets_formatter.vahar.datasets.upfall_dataset import UPFallNpyWindow, UPFallConst
 from vsf.data_generator.augmentation import Rotation3D
 from vsf.data_generator.classification_data_gen import FusionDataset, BalancedFusionDataset
 from vsf.data_generator.unlabelled_data_gen import UnlabelledFusionDataset
 from vsf.flow.torch_callbacks import ModelCheckpoint, EarlyStop
 from vsf.flow.vsf_flow import VsfE2eFlow
+from vsf.loss_functions.classification_loss import AutoCrossEntropyLoss
+from vsf.loss_functions.contrastive_loss import CMCLoss
 from vsf.networks.backbone_tcn import TCN
 from vsf.networks.complete_model import VsfModel
 from vsf.networks.vsf_distributor import VsfDistributor
-from vsf.loss_functions.contrastive_loss import CMCLoss
-from vahar_datasets_formatter.vahar.datasets.cmdfall_dataset import CMDFallNpyWindow, CMDFallConst
-from vahar_datasets_formatter.vahar.datasets.upfall_dataset import UPFallNpyWindow, UPFallConst
-from vsf.loss_functions.classification_loss import AutoCrossEntropyLoss
 
 
 def load_class_data(parquet_dir: str, window_size_sec=4, step_size_sec=2, min_step_size_sec=0.5,
@@ -227,7 +227,7 @@ if __name__ == '__main__':
             },
             contrastive_loss_func=CMCLoss(temp=0.1),
             cls_dropout=0.5,
-            
+
         )
         model = VsfModel(
             backbones=backbone,

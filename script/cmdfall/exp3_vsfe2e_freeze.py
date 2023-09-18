@@ -17,18 +17,18 @@ from loguru import logger
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
 
+from vahar_datasets_formatter.vahar.datasets.cmdfall_dataset import CMDFallNpyWindow, CMDFallConst
 from vsf.data_generator.augmentation import Rotation3D
 from vsf.data_generator.classification_data_gen import FusionDataset, BalancedFusionDataset
 from vsf.data_generator.unlabelled_data_gen import UnlabelledFusionDataset
 from vsf.flow.torch_callbacks import ModelCheckpoint, EarlyStop
 from vsf.flow.vsf_flow import VsfE2eFlow
-from vsf.networks.backbone_tcn import TCN
-from vsf.networks.complete_model import VsfModel
-from vsf.networks.vsf_distributor import VsfDistributor
 from vsf.loss_functions.contrastive_loss import CMCLoss
-from vahar_datasets_formatter.vahar.datasets.cmdfall_dataset import CMDFallNpyWindow, CMDFallConst
+from vsf.networks.backbone_tcn import TCN
 from vsf.networks.classifier import BasicClassifier
 from vsf.networks.complete_model import BasicClsModel
+from vsf.networks.complete_model import VsfModel
+from vsf.networks.vsf_distributor import VsfDistributor
 
 
 def split_3_sets(df: pd.DataFrame) -> tuple:
@@ -204,7 +204,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--output-folder', '-o', default='./log/cmdfall',
                         help='path to save training logs and model weights')
-    
+
     parser.add_argument('--ske-weight', '-ske',
                         default='/home/ducanh/projects/UCD04 - virtual sensor fusion/virtual-sensor-fusion/log/cmdfall/1_ske/run_1/model.pth',
                         help='path to trained weight of ske model')
@@ -256,7 +256,7 @@ if __name__ == '__main__':
             },
             contrastive_loss_func=CMCLoss(temp=0.1),
             cls_dropout=0.5,
-            
+
         )
         model = VsfModel(
             backbones=backbone,
@@ -290,7 +290,7 @@ if __name__ == '__main__':
         }
         train_set_cls = BalancedFusionDataset(deepcopy(train_cls_dict), augmenters=augmenter)
         valid_set_cls = FusionDataset(deepcopy(valid_cls_dict))
-        
+
         augmenter = {
             'acc': Rotation3D(angle_range=180, separate_triaxial=True),
             'ske': Rotation3D(angle_range=180, rot_axis=np.array([0, 0, 1]))

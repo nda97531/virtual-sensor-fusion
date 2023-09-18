@@ -1,9 +1,9 @@
 """
 VSF distributor receives features from backbone models, run additional layers if necessary, and calculate losses
 """
-from typing import Union
 import torch as tr
 import torch.nn as nn
+
 from vsf.loss_functions.contrastive_loss import ContrastiveLoss
 
 

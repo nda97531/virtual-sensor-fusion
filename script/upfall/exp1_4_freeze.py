@@ -17,18 +17,17 @@ from torch import nn
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
 
+from vahar_datasets_formatter.vahar.datasets.upfall_dataset import UPFallNpyWindow, UPFallConst
 from vsf.data_generator.augmentation import Rotation3D, HorizontalFlip
 from vsf.data_generator.classification_data_gen import FusionDataset, BalancedFusionDataset
-
 from vsf.flow.torch_callbacks import ModelCheckpoint, EarlyStop
 from vsf.flow.vsf_flow import VSFFlow
-from vsf.networks.backbone_tcn import TCN
-from vsf.networks.complete_model import VsfModel
-from vsf.networks.vsf_distributor import VsfDistributor
-from vahar_datasets_formatter.vahar.datasets.upfall_dataset import UPFallNpyWindow, UPFallConst
 from vsf.loss_functions.contrastive_loss import CocoaLoss
+from vsf.networks.backbone_tcn import TCN
 from vsf.networks.classifier import BasicClassifier
 from vsf.networks.complete_model import BasicClsModel
+from vsf.networks.complete_model import VsfModel
+from vsf.networks.vsf_distributor import VsfDistributor
 
 
 def load_data(parquet_dir: str, window_size_sec=4, step_size_sec=2, min_step_size_sec=0.5,
@@ -191,7 +190,7 @@ if __name__ == '__main__':
                 'wrist_acc': len(train_dict[list(train_dict.keys())[0]])
             },
             contrastive_loss_func=CocoaLoss(temp=0.1),
-            
+
         )
         model = VsfModel(
             backbones=backbone,

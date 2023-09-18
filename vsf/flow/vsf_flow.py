@@ -198,7 +198,7 @@ class VsfE2eFlow(BaseFlow):
 
         # calculate score report
         y_true = tr.concatenate(y_true).to('cpu')
-        y_preds = {modal: ypred_2_categorical(tr.concatenate(y_preds[modal])).to('cpu') 
+        y_preds = {modal: ypred_2_categorical(tr.concatenate(y_preds[modal])).to('cpu')
                    for modal in y_preds.keys()}
         reports = {
             modal: pd.DataFrame(metrics.classification_report(y_true, y_preds[modal], digits=4, output_dict=True))

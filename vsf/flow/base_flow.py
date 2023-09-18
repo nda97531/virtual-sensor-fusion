@@ -7,8 +7,8 @@ import torch as tr
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
 
-from vsf.loss_functions.classification_loss import AutoCrossEntropyLoss
 from vsf.flow.torch_callbacks import TorchCallback, CallbackAction
+from vsf.loss_functions.classification_loss import AutoCrossEntropyLoss
 
 
 class BaseFlow(ABC):

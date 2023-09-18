@@ -8,11 +8,14 @@ import os
 from collections import defaultdict
 from copy import deepcopy
 from glob import glob
+
 import numpy as np
 import torch as tr
 from loguru import logger
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
+
+from vahar_datasets_formatter.vahar.datasets.fallalld_dataset import FallAllDNpyWindow, FallAllDConst
 from vsf.data_generator.augmentation import Rotation3D
 from vsf.data_generator.classification_data_gen import BasicDataset, BalancedDataset
 from vsf.flow.single_task_flow import SingleTaskFlow
@@ -20,7 +23,6 @@ from vsf.flow.torch_callbacks import ModelCheckpoint, EarlyStop
 from vsf.networks.backbone_tcn import TCN
 from vsf.networks.classifier import BasicClassifier
 from vsf.networks.complete_model import BasicClsModel
-from vahar_datasets_formatter.vahar.datasets.fallalld_dataset import FallAllDNpyWindow, FallAllDConst
 
 
 def load_data(parquet_dir: str, window_size_sec=4, step_size_sec=2,

@@ -17,6 +17,7 @@ from torch import nn
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
 
+from vahar_datasets_formatter.vahar.datasets.upfall_dataset import UPFallNpyWindow, UPFallConst
 from vsf.data_generator.augmentation import Rotation3D, HorizontalFlip
 from vsf.data_generator.classification_data_gen import FusionDataset, BalancedFusionDataset
 from vsf.flow.single_task_flow import SingleTaskFlow
@@ -24,7 +25,6 @@ from vsf.flow.torch_callbacks import ModelCheckpoint, EarlyStop
 from vsf.networks.backbone_tcn import TCN
 from vsf.networks.classifier import BasicClassifier
 from vsf.networks.complete_model import FusionClsModel
-from vahar_datasets_formatter.vahar.datasets.upfall_dataset import UPFallNpyWindow, UPFallConst
 
 
 def load_data(parquet_dir: str, window_size_sec=4, step_size_sec=2, min_step_size_sec=0.5,

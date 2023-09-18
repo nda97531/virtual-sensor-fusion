@@ -1,4 +1,3 @@
-import torch as tr
 from sklearn import metrics
 
 
