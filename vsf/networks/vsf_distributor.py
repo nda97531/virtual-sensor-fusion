@@ -61,10 +61,11 @@ class VsfDistributor(nn.Module):
             contrast_mask: same as `cls_mask` but for contrastive loss
 
         Returns:
-            a tuple of 2 elements:
+            a tuple of 3 elements:
                 - a dict, keys are modal names, values are class logits predicted from that modal,
                     value tensor shape is [batch, num class]
-                - contrastive loss (pytorch float; None if `cal_loss` == False)
+                - contrastive loss (pytorch float; None if contrast_mask results in empty data)
+                - minus modal classification loss (same as contrastive loss)
         """
         # classification
         class_logit = {

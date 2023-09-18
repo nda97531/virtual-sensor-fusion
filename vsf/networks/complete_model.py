@@ -132,7 +132,8 @@ class VsfModel(nn.Module):
             a tuple of 2 elements:
                 - a dict, keys are modal names, values are class logits predicted from that modal,
                     value tensor shape is [batch, num class]
-                - contrastive loss (pytorch float)
+                - contrastive loss (pytorch float, will be None if contrast_mask results in empty data)
+                - minus modal classification loss (same as contrastive loss)
         """
         # run backbones by order in backbones dict
         # dict[modal] = [batch, channel]
@@ -169,5 +170,5 @@ class VsfModel(nn.Module):
             for modal in x_dict.keys()
         }
 
-        class_logits, contrast_loss = self.distributor(x_dict, **head_kwargs)
-        return class_logits, contrast_loss
+        class_logits, contrast_loss, modal_cls_loss = self.distributor(x_dict, **head_kwargs)
+        return class_logits, contrast_loss, modal_cls_loss

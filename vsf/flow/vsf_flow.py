@@ -162,6 +162,7 @@ class VsfE2eFlow(BaseFlow):
 
         # record epoch log
         # losses
+        valid_log = dict(valid_log)
         valid_log['cls_loss'] /= len(dataloader['cls'])
         valid_log['contrast_loss'] /= len(dataloader['contrast'])
         valid_log['modal_cls_loss'] /= len(dataloader['contrast'])
