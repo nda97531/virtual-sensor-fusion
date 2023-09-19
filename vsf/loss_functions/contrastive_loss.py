@@ -102,11 +102,13 @@ class CMCLoss(ContrastiveLoss):
                 num_components += 1
 
             elif self.main_modal_idx in {modal1_idx, modal2_idx}:
-                sub_modal_idx = modal2_idx if modal1_idx == self.main_modal_idx else modal1_idx
-                modal1_feat = all_features[self.main_modal_idx]
-                modal2_feat = all_features[sub_modal_idx]
+                modal1_feat = all_features[modal1_idx]
+                modal2_feat = all_features[modal2_idx]
                 if self.ignore_submodal:
-                    modal2_feat = modal2_feat.detach()
+                    if modal1_idx == self.main_modal_idx:
+                        modal2_feat = modal2_feat.detach()
+                    else:
+                        modal1_feat = modal1_feat.detach()
                 error += info_nce_loss(modal1_feat, modal2_feat, temp=self.temp, norm2_eps=self.eps)
                 num_components += 1
 

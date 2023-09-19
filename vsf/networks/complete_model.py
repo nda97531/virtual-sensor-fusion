@@ -7,18 +7,21 @@ from vsf.networks.vsf_distributor import VsfDistributor
 
 
 class BasicClsModel(nn.Module):
-    def __init__(self, backbone: nn.Module, classifier: nn.Module, dropout: float = 0.5) -> None:
+    def __init__(self, backbone: nn.Module, classifier: nn.Module, backbone_activation=nn.ReLU(),
+                 dropout: float = 0.5) -> None:
         """
         Basic classification model with a backbone and a classifier
 
         Args:
             backbone: backbone model
             classifier: classifier model
+            backbone_activation: apply this activation after the backbone
             dropout: dropout rate between backbone and classifier
         """
         super().__init__()
         self.backbone = backbone
         self.classifier = classifier
+        self.backbone_activation = backbone_activation
         self.dropout = nn.Dropout(p=dropout)
 
     def forward(self, x: tr.Tensor, backbone_kwargs: dict = {}, classifier_kwargs: dict = {}):
@@ -35,6 +38,7 @@ class BasicClsModel(nn.Module):
         x = tr.permute(x, [0, 2, 1])
 
         x = self.backbone(x, **backbone_kwargs)
+        x = self.backbone_activation(x)
         # [batch, channel]
         x = self.dropout(x)
         x = self.classifier(x, **classifier_kwargs)
@@ -43,19 +47,21 @@ class BasicClsModel(nn.Module):
 
 class FusionClsModel(nn.Module):
     def __init__(self, backbones: nn.ModuleDict, backbone_output_dims: dict, classifier: nn.Module,
-                 dropout: float = 0.5) -> None:
+                 backbone_activation=nn.ReLU(), dropout: float = 0.5) -> None:
         """
         A feature-level fusion model that concatenates features of backbones before the classifier
 
         Args:
             backbones: a module dict of backbone models
-            classifier: classifier model
             backbone_output_dims: output channel dim of each backbone, this dict has the same keys as `backbones`
+            classifier: classifier model
+            backbone_activation: apply this activation after the backbone
             dropout: dropout rate between backbone and classifier
         """
         super().__init__()
         self.backbones = backbones
         self.classifiers = classifier
+        self.backbone_activation = backbone_activation
         self.dropout = nn.Dropout(p=dropout)
         self.connect_fc = nn.ModuleDict({
             modal: nn.Linear(backbone_output_dims[modal], backbone_output_dims[modal])
@@ -75,10 +81,9 @@ class FusionClsModel(nn.Module):
         """
         x = tr.cat([
             self.connect_fc[modal](
-                self.backbones[modal](
-                    tr.permute(x_dict[modal], [0, 2, 1]), **backbone_kwargs
-                )
-            )
+                self.backbone_activation(
+                    self.backbones[modal](
+                        tr.permute(x_dict[modal], [0, 2, 1]), **backbone_kwargs)))
             for modal in self.backbones.keys()
         ], dim=1)
         x = nn.functional.relu(x)

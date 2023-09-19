@@ -46,7 +46,9 @@ class TCN(nn.Module):
                  attention_conv_norm: str = 'batch'
                  ):
         """
-        TCN backbone
+        TCN backbone;
+        Activation function for all Conv layers is ReLU,
+        EXCEPT the last layer that doesn't have an activation function
 
         Args:
             input_shape: a tuple showing input shape to the model [window size, channel]
@@ -80,6 +82,8 @@ class TCN(nn.Module):
 
             # only drop between res blocks, don't drop after the last block
             block_dropout_rate = 0. if (i == len(n_tcn_channels) - 1) else tcn_drop_rate
+            # don't use activation at the last layer of the last block
+            output_activation = i != len(n_tcn_channels) - 1
 
             layers.append(ResTempBlock(
                 input_len=input_shape[0],
@@ -91,6 +95,7 @@ class TCN(nn.Module):
                 use_spatial_dropout=use_spatial_dropout,
                 n_conv_layers=2,
                 conv_norm=conv_norm,
+                output_activation=output_activation
             ))
 
         self.feature_extractor = nn.Sequential(*layers)
@@ -162,8 +167,9 @@ class TCN(nn.Module):
 
 
 class ResTempBlock(nn.Module):
-    def __init__(self, input_len, n_channels_in, n_channels_out, kernel_size, dilation, dropout_rate=0.2,
-                 use_spatial_dropout=False, n_conv_layers=2, conv_norm: str = 'batch'):
+    def __init__(self, input_len, n_channels_in, n_channels_out, kernel_size, dilation, dropout_rate=0.5,
+                 use_spatial_dropout: bool = False, n_conv_layers=2, conv_norm: str = 'batch',
+                 output_activation: bool = True):
         """
         A residual block in TCN
 
@@ -177,6 +183,7 @@ class ResTempBlock(nn.Module):
             use_spatial_dropout: whether to use spatial dropout or normal dropout
             n_conv_layers: number of conv layers in this res-block
             conv_norm: type of norm after each conv layer, can be 'batch', 'layer' or empty
+            output_activation: whether to apply activation function after the very last Conv layer
         """
         super().__init__()
 
@@ -194,6 +201,7 @@ class ResTempBlock(nn.Module):
                 dilation=dilation,
                 drop_rate=dropout_rate,
                 use_spatial_dropout=use_spatial_dropout,
+                activation=nn.Identity() if ((i == n_conv_layers - 1) and (not output_activation)) else nn.ReLU(),
                 norm_layer=conv_norm
             ))
             if i == 0:
