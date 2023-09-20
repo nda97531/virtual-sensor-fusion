@@ -5,35 +5,40 @@ import torch.nn as nn
 
 
 class BasicClassifier(nn.Module):
-    def __init__(self, n_features_in: int, n_classes_out: int):
+    def __init__(self, n_features_in: int, n_classes_out: int, dropout: float = 0.5):
         """
         FC classifier for single task
 
         Args:
             n_features_in: input dim
             n_classes_out: output dim
+            dropout: dropout rate before classifier
         """
         super().__init__()
         self.fc = nn.Linear(n_features_in, n_classes_out)
+        self.drop = nn.Dropout(p=dropout)
 
     def forward(self, x):
+        x = self.drop(x)
         x = self.fc(x)
         return x
 
 
 class MaskedClassifiers(nn.Module):
-    def __init__(self, n_features_in: int, n_classes_out: list):
+    def __init__(self, n_features_in: int, n_classes_out: list, dropout: float = 0.5):
         """
         FC classifiers for multiple classification tasks
 
         Args:
             n_features_in: input dim
             n_classes_out: list of output dims
+            dropout: dropout rate before classifier
         """
         super().__init__()
         self.fcs = nn.ModuleList()
         for n_c in n_classes_out:
             self.fcs.append(nn.Linear(n_features_in, n_c))
+        self.drop = nn.Dropout(p=dropout)
 
     def forward(self, x, mask: Union[tr.Tensor, str]):
         """
@@ -47,6 +52,7 @@ class MaskedClassifiers(nn.Module):
         Returns:
             a tuple, element at index i is the output of classifier i.
         """
+        x = self.drop(x)
         if mask == 'all':
             output = tuple(self.fcs[i](x) for i in range(len(self.fcs)))
         else:

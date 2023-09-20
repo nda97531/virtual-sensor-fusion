@@ -2,27 +2,23 @@ from typing import Dict, Union
 
 import torch as tr
 import torch.nn as nn
+import torch.nn.functional as F
 
 from vsf.networks.vsf_distributor import VsfDistributor
 
 
 class BasicClsModel(nn.Module):
-    def __init__(self, backbone: nn.Module, classifier: nn.Module, backbone_activation=nn.ReLU(),
-                 dropout: float = 0.5) -> None:
+    def __init__(self, backbone: nn.Module, classifier: nn.Module) -> None:
         """
         Basic classification model with a backbone and a classifier
 
         Args:
             backbone: backbone model
             classifier: classifier model
-            backbone_activation: apply this activation after the backbone
-            dropout: dropout rate between backbone and classifier
         """
         super().__init__()
         self.backbone = backbone
         self.classifier = classifier
-        self.backbone_activation = backbone_activation
-        self.dropout = nn.Dropout(p=dropout)
 
     def forward(self, x: tr.Tensor, backbone_kwargs: dict = {}, classifier_kwargs: dict = {}):
         """
@@ -36,18 +32,18 @@ class BasicClsModel(nn.Module):
         """
         # change to [batch, channel, length]
         x = tr.permute(x, [0, 2, 1])
-
         x = self.backbone(x, **backbone_kwargs)
-        x = self.backbone_activation(x)
+
+        # relu between backbone and classifier
+        x = F.relu(x)
+
         # [batch, channel]
-        x = self.dropout(x)
         x = self.classifier(x, **classifier_kwargs)
         return x
 
 
 class FusionClsModel(nn.Module):
-    def __init__(self, backbones: nn.ModuleDict, backbone_output_dims: dict, classifier: nn.Module,
-                 backbone_activation=nn.ReLU(), dropout: float = 0.5) -> None:
+    def __init__(self, backbones: nn.ModuleDict, backbone_output_dims: dict, classifier: nn.Module) -> None:
         """
         A feature-level fusion model that concatenates features of backbones before the classifier
 
@@ -55,14 +51,10 @@ class FusionClsModel(nn.Module):
             backbones: a module dict of backbone models
             backbone_output_dims: output channel dim of each backbone, this dict has the same keys as `backbones`
             classifier: classifier model
-            backbone_activation: apply this activation after the backbone
-            dropout: dropout rate between backbone and classifier
         """
         super().__init__()
         self.backbones = backbones
         self.classifiers = classifier
-        self.backbone_activation = backbone_activation
-        self.dropout = nn.Dropout(p=dropout)
         self.connect_fc = nn.ModuleDict({
             modal: nn.Linear(backbone_output_dims[modal], backbone_output_dims[modal])
             if backbone_output_dims[modal] else nn.Identity()
@@ -81,15 +73,16 @@ class FusionClsModel(nn.Module):
         """
         x = tr.cat([
             self.connect_fc[modal](
-                self.backbone_activation(
+                F.relu(
                     self.backbones[modal](
                         tr.permute(x_dict[modal], [0, 2, 1]), **backbone_kwargs)))
             for modal in self.backbones.keys()
         ], dim=1)
-        x = nn.functional.relu(x)
-        # [batch, channel]
 
-        x = self.dropout(x)
+        # relu between backbone and classifier
+        x = F.relu(x)
+
+        # [batch, channel]
         x = self.classifiers(x, **classifier_kwargs)
         return x
 
@@ -119,7 +112,7 @@ class VsfModel(nn.Module):
         if isinstance(connect_feature_dims, list) or isinstance(connect_feature_dims, tuple):
             connect_feature_dims = {key: connect_feature_dims for key in backbones.keys()}
         self.connect_fc = nn.ModuleDict({
-            modal: nn.Sequential(nn.Linear(in_feat, out_feat), nn.ReLU())
+            modal: nn.Sequential(nn.ReLU(), nn.Linear(in_feat, out_feat))
             for modal, (in_feat, out_feat) in connect_feature_dims.items()
         })
 
@@ -173,8 +166,10 @@ class VsfModel(nn.Module):
                 head_kwargs['cls_mask'][self.MODAL_FUSE_CTR] = tr.tensor([False] * len(x_dict[self.MODAL_FUSE_CTR]))
 
         # run connect FCs, keep order of x_dict
+        # tanh shrink activation is used to connect backbone and distributor
         x_dict = {
-            modal: self.connect_fc[modal](x_dict[modal]) if modal in self.connect_fc.keys() else x_dict[modal]
+            modal: F.tanhshrink(self.connect_fc[modal](x_dict[modal])) if modal in self.connect_fc.keys()
+            else F.tanhshrink(x_dict[modal])
             for modal in x_dict.keys()
         }
 
