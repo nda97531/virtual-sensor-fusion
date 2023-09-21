@@ -180,7 +180,7 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    NUM_REPEAT = 3
+    NUM_REPEAT = 1
     NUM_EPOCH = 300
     LEARNING_RATE = 1e-3
     WEIGHT_DECAY = 0
@@ -239,7 +239,7 @@ if __name__ == '__main__':
         num_cls = len(train_cls_dict[list(train_cls_dict.keys())[0]])
         head = VsfDistributor(
             input_dims={
-                modal: 128 for modal in list(backbone.keys()) + [VsfModel.MODAL_FUSE_CTR]
+                modal: 128 for modal in list(backbone.keys())# + [VsfModel.MODAL_FUSE_CTR]
             },  # affect contrast loss order
             num_classes={
                 'waist': num_cls, 'wrist': num_cls
@@ -249,7 +249,7 @@ if __name__ == '__main__':
         )
         model = VsfModel(
             backbones=backbone, distributor_head=head,
-            connect_feature_dims={VsfModel.MODAL_FUSE_CTR: [384, 128]}
+            # connect_feature_dims={VsfModel.MODAL_FUSE_CTR: [384, 128]}
         )
 
         # create folder to save result

@@ -5,32 +5,41 @@ import torch.nn.functional as F
 from torch import nn
 
 
-def torch_cosine_similarity(tensor1: tr.Tensor, tensor2: tr.Tensor, norm2_eps: float = 1e-6) -> tr.Tensor:
+def torch_cosine_similarity(tensor1: tr.Tensor, tensor2: tr.Tensor,
+                            length1: tr.Tensor = None, length2: tr.Tensor = None,
+                            norm2_eps: float = 1e-6) -> tr.Tensor:
     """
     Calculate pairwise cosine similarity between 2 torch Tensors
     Args:
         tensor1: tensor shape [batch size 1, feature]
         tensor2: tensor shape [batch size 2, feature]
+        length1: length of vectors in tensor1, tensor shape [batch size 1]
+        length2: length of vectors in tensor2, tensor shape [batch size 2]
         norm2_eps: epsilon added to norm2 when calculating cosine similarity to avoid division by 0
 
     Returns:
         tensor shape [batch size 1, batch size 2]
     """
     # tensor shape [batch, batch]
-    length1 = tr.sqrt((tensor1 ** 2).sum(dim=-1, keepdims=True))
-    length2 = tr.sqrt((tensor2 ** 2).sum(dim=-1, keepdims=True))
+    if length1 is None:
+        length1 = tr.sqrt((tensor1 ** 2).sum(dim=-1, keepdims=True))
+    if length2 is None:
+        length2 = tr.sqrt((tensor2 ** 2).sum(dim=-1, keepdims=True))
     sim = tr.matmul(tensor1, tensor2.permute([1, 0])) / \
           tr.maximum(tr.matmul(length1, length2.permute([1, 0])), tr.tensor(norm2_eps))
     return sim
 
 
-def info_nce_loss(modal1: tr.Tensor, modal2: tr.Tensor, temp: float = 0.1, norm2_eps: float = 1e-6):
+def info_nce_loss(modal1: tr.Tensor, modal2: tr.Tensor, cosine_thres: float = 1,
+                  temp: float = 0.1, norm2_eps: float = 1e-6):
     """
     InfoNCE loss between 2 modalities
 
     Args:
         modal1: features of modal 1, tensor shape [batch, feature]
         modal2: features of modal 2, tensor shape [batch, feature]
+        cosine_thres: only include pairs with cosine similarity less than or equal to this threshold when
+            calculating loss
         temp: temperature param
         norm2_eps: epsilon added to norm2 when calculating cosine similarity to avoid division by 0
 
@@ -38,12 +47,33 @@ def info_nce_loss(modal1: tr.Tensor, modal2: tr.Tensor, temp: float = 0.1, norm2
         a pytorch float
     """
     assert modal1.shape == modal2.shape
+
+    # cosine sim
+    length1 = tr.sqrt((modal1 ** 2).sum(dim=-1, keepdims=True))
+    length2 = tr.sqrt((modal2 ** 2).sum(dim=-1, keepdims=True))
     # tensor shape [batch, batch]
-    sim = torch_cosine_similarity(modal1, modal2, norm2_eps)
-    sim = sim / temp
-    # create positive idx tensor on the same device as `sim`
-    positive_pair_idx = sim.new_tensor(range(sim.shape[0]), dtype=tr.long)
-    error = F.cross_entropy(input=sim, target=positive_pair_idx)
+    cross_sim = torch_cosine_similarity(modal1, modal2, length1, length2, norm2_eps)
+    modal1_sim = torch_cosine_similarity(modal1, modal1, length1, length1, norm2_eps)
+    modal2_sim = torch_cosine_similarity(modal2, modal2, length2, length2, norm2_eps)
+
+    # mask: False: too similar pairs; True: dissimilar pairs for infoNCE loss
+    batch_sim_mask = (modal1_sim <= cosine_thres) | (modal2_sim <= cosine_thres)
+    # must include diagonal because it's y_true
+    batch_sim_mask[range(len(batch_sim_mask)), range(len(batch_sim_mask))] = True
+
+    if not batch_sim_mask.all():
+        error = 0
+        # exclude too similar pairs
+        for i in range(len(batch_sim_mask)):
+            batch_sim = cross_sim[i][batch_sim_mask[i]]
+            batch_label = i - (~batch_sim_mask[i, :i]).sum()
+            error += F.cross_entropy(batch_sim / temp, batch_label)
+        error /= len(batch_sim_mask)
+    else:
+        # create positive idx tensor on the same device as `sim`
+        positive_pair_idx = cross_sim.new_tensor(range(cross_sim.shape[0]), dtype=tr.long)
+        error = F.cross_entropy(cross_sim / temp, positive_pair_idx)
+
     return error
 
 
