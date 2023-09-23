@@ -244,21 +244,14 @@ if __name__ == '__main__':
             )
         })
 
+        num_cls = len(train_cls_dict[list(train_cls_dict.keys())[0]])
         head = VsfDistributor(
             input_dims={modal: 128 for modal in backbone.keys()},  # affect contrast loss order
-            num_classes={  # affect class logit order
-                'waist': len(train_cls_dict[list(train_cls_dict.keys())[0]]),
-                'wrist': len(train_cls_dict[list(train_cls_dict.keys())[0]]),
-                'ske': len(train_cls_dict[list(train_cls_dict.keys())[0]])
-            },
-            contrastive_loss_func=CMCLoss(temp=0.1),
-            cls_dropout=0.5,
-
+            num_classes={'waist': num_cls, 'wrist': num_cls, 'ske': num_cls},  # affect class logit order
+            contrastive_loss_func=CMCLoss(cos_thres=0.5, temp=0.1),
+            cls_dropout=0.5
         )
-        model = VsfModel(
-            backbones=backbone,
-            distributor_head=head
-        )
+        model = VsfModel(backbones=backbone, distributor_head=head)
 
         # create folder to save result
         save_folder = f'{args.output_folder}/{args.name}'
@@ -273,7 +266,6 @@ if __name__ == '__main__':
             model=model,
             optimizer=optimizer,
             device=args.device,
-            cls_loss_fn=AutoCrossEntropyLoss(confidence_loss_weight=1),
             callbacks=[
                 ModelCheckpoint(NUM_EPOCH, model_file_path, smaller_better=False),
                 EarlyStop(EARLY_STOP_PATIENCE, smaller_better=False),

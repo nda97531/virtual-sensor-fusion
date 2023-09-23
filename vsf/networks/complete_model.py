@@ -111,6 +111,7 @@ class VsfModel(nn.Module):
         # connect FCs, used between backbone and distributor
         if isinstance(connect_feature_dims, list) or isinstance(connect_feature_dims, tuple):
             connect_feature_dims = {key: connect_feature_dims for key in backbones.keys()}
+        # backbone output isn't activated, so add a ReLU function before connect FCs
         self.connect_fc = nn.ModuleDict({
             modal: nn.Sequential(nn.ReLU(), nn.Linear(in_feat, out_feat))
             for modal, (in_feat, out_feat) in connect_feature_dims.items()
@@ -168,8 +169,8 @@ class VsfModel(nn.Module):
         # run connect FCs, keep order of x_dict
         # tanh shrink activation is used to connect backbone and distributor
         x_dict = {
-            modal: F.tanhshrink(self.connect_fc[modal](x_dict[modal])) if modal in self.connect_fc.keys()
-            else F.tanhshrink(x_dict[modal])
+            modal: F.relu(self.connect_fc[modal](x_dict[modal])) if modal in self.connect_fc.keys()
+            else F.relu(x_dict[modal])
             for modal in x_dict.keys()
         }
 
