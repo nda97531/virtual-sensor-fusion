@@ -92,7 +92,7 @@ class VsfModel(nn.Module):
     MODAL_FUSE_CTR = 'fusion_contrast'
 
     def __init__(self, backbones: nn.ModuleDict, distributor_head: VsfDistributor,
-                 connect_feature_dims: Union[int, dict] = {}) -> None:
+                 connect_feature_dims: Union[list, dict] = {}) -> None:
         """
         Combine backbones and heads, including classifier and contrastive loss head
 
@@ -167,7 +167,6 @@ class VsfModel(nn.Module):
                 head_kwargs['cls_mask'][self.MODAL_FUSE_CTR] = tr.tensor([False] * len(x_dict[self.MODAL_FUSE_CTR]))
 
         # run connect FCs, keep order of x_dict
-        # tanh shrink activation is used to connect backbone and distributor
         x_dict = {
             modal: F.relu(self.connect_fc[modal](x_dict[modal])) if modal in self.connect_fc.keys()
             else F.relu(x_dict[modal])

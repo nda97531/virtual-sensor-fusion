@@ -123,7 +123,7 @@ if __name__ == '__main__':
     NUM_REPEAT = 3
     NUM_EPOCH = 300
     LEARNING_RATE = 1e-3
-    WEIGHT_DECAY = 0
+    WEIGHT_DECAY = 1e-5
     EARLY_STOP_PATIENCE = 30
     LR_SCHEDULER_PATIENCE = 15
     TRAIN_BATCH_SIZE = 32
@@ -166,8 +166,7 @@ if __name__ == '__main__':
         )
         model = FusionClsModel(backbones=backbone,
                                backbone_output_dims={k: 128 for k in backbone.keys()},
-                               classifier=classifier,
-                               dropout=0.5)
+                               classifier=classifier)
 
         # create folder to save result
         save_folder = f'{args.output_folder}/{args.name}'

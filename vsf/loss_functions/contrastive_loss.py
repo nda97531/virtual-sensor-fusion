@@ -97,7 +97,7 @@ class ContrastiveLoss(nn.Module):
 
 class CMCLoss(ContrastiveLoss):
     def __init__(self, main_modal_idx: int = None, ignore_submodal: bool = False,
-                 cos_thres: float = 0.5, temp: float = 0.1, eps: float = 1e-6, *args, **kwargs):
+                 cos_thres: float = 1, temp: float = 0.1, eps: float = 1e-6, *args, **kwargs):
         """
         CMC loss for multiple modals
 
@@ -108,7 +108,7 @@ class CMCLoss(ContrastiveLoss):
             ignore_submodal: only relevant if `main_modal_idx` is provided;
                 whether to detach sub-modals when optimising CMC loss
             cos_thres: only include pairs with cosine similarity less than or equal to this threshold when
-                calculating infoNCE loss
+                calculating infoNCE loss; If =1 (max cosine), don't use filter at all
             temp: temperature param
             eps: epsilon added to norm2 when calculating cosine similarity to avoid division by 0
         """

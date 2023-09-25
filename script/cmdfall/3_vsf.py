@@ -186,7 +186,7 @@ if __name__ == '__main__':
     NUM_REPEAT = 3
     NUM_EPOCH = 300
     LEARNING_RATE = 1e-3
-    WEIGHT_DECAY = 0
+    WEIGHT_DECAY = 1e-5
     EARLY_STOP_PATIENCE = 30
     LR_SCHEDULER_PATIENCE = 15
     TRAIN_BATCH_SIZE = 32
@@ -233,7 +233,7 @@ if __name__ == '__main__':
         head = VsfDistributor(
             input_dims={modal: 128 for modal in backbone.keys()},  # affect contrast loss order
             num_classes={'acc': num_cls, 'ske': num_cls},  # affect class logit order
-            contrastive_loss_func=CMCLoss(cos_thres=0.5, temp=0.1),
+            contrastive_loss_func=CMCLoss(cos_thres=1, temp=0.1),
             cls_dropout=0.5
         )
         model = VsfModel(backbones=backbone, distributor_head=head)

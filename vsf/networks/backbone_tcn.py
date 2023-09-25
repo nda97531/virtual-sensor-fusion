@@ -1,6 +1,5 @@
 import math
 
-import torch as tr
 import torch.nn as nn
 import torch.nn.functional as F
 from loguru import logger
@@ -188,6 +187,7 @@ class ResTempBlock(nn.Module):
         super().__init__()
 
         org_channel_in = n_channels_in
+        self.output_activation = output_activation
 
         block = []
         for i in range(n_conv_layers):
@@ -213,4 +213,9 @@ class ResTempBlock(nn.Module):
     def forward(self, x):
         out = self.block(x)
         res = x if self.downsample is None else self.downsample(x)
-        return tr.relu(out + res)
+        
+        out = out + res
+        if self.output_activation:
+            out = F.relu(out)
+
+        return out
