@@ -38,7 +38,7 @@ def split_3_sets(df: pd.DataFrame) -> tuple:
     # odd subjects as train set
     train_set_idx = (df['subject'] % 2 != 0) & (~valid_set_idx)
     train_set = df.loc[train_set_idx]
-    # 1/3 subjects as test set
+    # even subjects as test set
     test_set_idx = ~(train_set_idx | valid_set_idx)
     test_set = df.loc[test_set_idx]
 
@@ -186,7 +186,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     NUM_REPEAT = 3
-    NUM_EPOCH = 300
+    MAX_EPOCH = 300
+    MIN_EPOCH = 40
     LEARNING_RATE = 1e-3
     WEIGHT_DECAY = 1e-5
     EARLY_STOP_PATIENCE = 30
@@ -255,7 +256,7 @@ if __name__ == '__main__':
             optimizer=optimizer,
             device=args.device,
             callbacks=[
-                ModelCheckpoint(NUM_EPOCH, model_file_path, smaller_better=False),
+                ModelCheckpoint(MAX_EPOCH, model_file_path, smaller_better=False),
                 EarlyStop(EARLY_STOP_PATIENCE, smaller_better=False),
                 ReduceLROnPlateau(optimizer=optimizer, mode='max', patience=LR_SCHEDULER_PATIENCE, verbose=True)
             ],
@@ -287,7 +288,7 @@ if __name__ == '__main__':
         train_log, valid_log = flow.run(
             train_loader=train_loader,
             valid_loader=valid_loader,
-            num_epochs=NUM_EPOCH
+            max_epochs=MAX_EPOCH, min_epochs=MIN_EPOCH
         )
 
         # test

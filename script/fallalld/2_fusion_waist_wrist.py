@@ -1,6 +1,6 @@
 """
 Single task: classification of all labels
-Single sensor: 2 accelerometers
+Sensor fusion: wrist + waist
 """
 
 import itertools
@@ -15,14 +15,14 @@ from loguru import logger
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
 
-from vahar_datasets_formatter.vahar.datasets.fallalld_dataset import FallAllDNpyWindow, FallAllDConst
+from vahar_datasets_formatter.vahar.datasets.fallalld_dataset import FallAllDConst, FallAllDNpyWindow
 from vsf.data_generator.augmentation import Rotation3D
-from vsf.data_generator.classification_data_gen import BasicDataset, BalancedDataset
+from vsf.data_generator.classification_data_gen import FusionDataset, BalancedFusionDataset
 from vsf.flow.single_task_flow import SingleTaskFlow
 from vsf.flow.torch_callbacks import ModelCheckpoint, EarlyStop
 from vsf.networks.backbone_tcn import TCN
 from vsf.networks.classifier import BasicClassifier
-from vsf.networks.complete_model import BasicClsModel
+from vsf.networks.complete_model import FusionClsModel
 
 
 def load_data(parquet_dir: str, window_size_sec=4, step_size_sec=2,
@@ -49,8 +49,8 @@ def load_data(parquet_dir: str, window_size_sec=4, step_size_sec=2,
         max_short_window=max_short_window,
         modal_cols={
             FallAllDConst.MODAL_INERTIA: {
-                'acc': ['waist_acc_x(m/s^2)', 'waist_acc_y(m/s^2)', 'waist_acc_z(m/s^2)',
-                        'wrist_acc_x(m/s^2)', 'wrist_acc_y(m/s^2)', 'wrist_acc_z(m/s^2)']
+                'waist': ['waist_acc_x(m/s^2)', 'waist_acc_y(m/s^2)', 'waist_acc_z(m/s^2)'],
+                'wrist': ['wrist_acc_x(m/s^2)', 'wrist_acc_y(m/s^2)', 'wrist_acc_z(m/s^2)']
             }
         }
     )
@@ -96,7 +96,8 @@ def load_data(parquet_dir: str, window_size_sec=4, step_size_sec=2,
         class_dict = defaultdict(dict)
         for label_idx, label_val in enumerate(label_list):
             idx = modal_dict['label'] == label_val
-            class_dict['acc'][label_idx] = modal_dict['acc'][idx]
+            class_dict['waist'][label_idx] = modal_dict['waist'][idx]
+            class_dict['wrist'][label_idx] = modal_dict['wrist'][idx]
         class_dict = dict(class_dict)
 
         assert list(class_dict.keys()) == list_sub_modal, 'Mismatched submodal list'
@@ -116,7 +117,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--device', '-d', default='cuda:0')
 
-    parser.add_argument('--name', '-n', default='exp1_1',
+    parser.add_argument('--name', '-n', required=True,
                         help='name of the experiment to create a folder to save weights')
 
     parser.add_argument('--data-folder', '-data',
@@ -128,7 +129,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     NUM_REPEAT = 3
-    NUM_EPOCH = 300
+    MAX_EPOCH = 300
+    MIN_EPOCH = 40
     LEARNING_RATE = 1e-3
     WEIGHT_DECAY = 1e-5
     EARLY_STOP_PATIENCE = 30
@@ -137,9 +139,9 @@ if __name__ == '__main__':
 
     # load data
     three_dicts = load_data(parquet_dir=args.data_folder)
-    train_dict = three_dicts['train']['acc']
-    valid_dict = three_dicts['valid']['acc']
-    test_dict = three_dicts['test']['acc']
+    train_dict = three_dicts['train']
+    valid_dict = three_dicts['valid']
+    test_dict = three_dicts['test']
     del three_dicts
 
     test_scores = []
@@ -147,20 +149,33 @@ if __name__ == '__main__':
     # train 3 times
     for _ in range(NUM_REPEAT):
         # create model
-        backbone = TCN(
-            input_shape=train_dict[0].shape[1:],
-            how_flatten='spatial attention gap',
-            n_tcn_channels=(64,) * 5 + (128,) * 2,
-            tcn_drop_rate=0.5,
-            use_spatial_dropout=True,
-            conv_norm='batch',
-            attention_conv_norm=''
-        )
+        backbone = tr.nn.ModuleDict({
+            'waist': TCN(
+                input_shape=train_dict['waist'][0].shape[1:],
+                how_flatten='spatial attention gap',
+                n_tcn_channels=(64,) * 5 + (128,) * 2,
+                tcn_drop_rate=0.5,
+                use_spatial_dropout=True,
+                conv_norm='batch',
+                attention_conv_norm=''
+            ),
+            'wrist': TCN(
+                input_shape=train_dict['wrist'][0].shape[1:],
+                how_flatten='spatial attention gap',
+                n_tcn_channels=(64,) * 5 + (128,) * 2,
+                tcn_drop_rate=0.5,
+                use_spatial_dropout=True,
+                conv_norm='batch',
+                attention_conv_norm=''
+            )
+        })
         classifier = BasicClassifier(
-            n_features_in=128,
-            n_classes_out=len(train_dict)
+            n_features_in=256,
+            n_classes_out=len(train_dict[list(train_dict.keys())[0]])
         )
-        model = BasicClsModel(backbone=backbone, classifier=classifier)
+        model = FusionClsModel(backbones=backbone,
+                               backbone_output_dims={k: 128 for k in backbone.keys()},
+                               classifier=classifier)
 
         # create folder to save result
         save_folder = f'{args.output_folder}/{args.name}'
@@ -175,7 +190,7 @@ if __name__ == '__main__':
             model=model, optimizer=optimizer,
             device=args.device,
             callbacks=[
-                ModelCheckpoint(NUM_EPOCH, model_file_path, smaller_better=False),
+                ModelCheckpoint(MAX_EPOCH, model_file_path, smaller_better=False),
                 EarlyStop(EARLY_STOP_PATIENCE, smaller_better=False),
                 ReduceLROnPlateau(optimizer=optimizer, mode='max', patience=LR_SCHEDULER_PATIENCE, verbose=True)
             ],
@@ -183,19 +198,22 @@ if __name__ == '__main__':
         )
 
         # train and valid
-        augmenter = Rotation3D(angle_range=180, separate_triaxial=True)
-        train_set = BalancedDataset(deepcopy(train_dict), augmenter=augmenter)
-        valid_set = BasicDataset(deepcopy(valid_dict))
+        augmenter = {
+            'waist': Rotation3D(angle_range=180),
+            'wrist': Rotation3D(angle_range=180)
+        }
+        train_set = BalancedFusionDataset(deepcopy(train_dict), augmenters=augmenter)
+        valid_set = FusionDataset(deepcopy(valid_dict))
         train_loader = DataLoader(train_set, batch_size=TRAIN_BATCH_SIZE, shuffle=True)
         valid_loader = DataLoader(valid_set, batch_size=64, shuffle=False)
         train_log, valid_log = flow.run(
             train_loader=train_loader,
             valid_loader=valid_loader,
-            num_epochs=NUM_EPOCH
+            max_epochs=MAX_EPOCH, min_epochs=MIN_EPOCH
         )
 
         # test
-        test_set = BasicDataset(deepcopy(test_dict))
+        test_set = FusionDataset(deepcopy(test_dict))
         test_loader = DataLoader(test_set, batch_size=64, shuffle=False)
         test_score = flow.run_test_epoch(test_loader, model_state_dict=tr.load(model_file_path))
         test_scores.append(test_score)

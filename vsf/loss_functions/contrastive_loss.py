@@ -72,7 +72,7 @@ def filtered_infonce_loss(modal1: tr.Tensor, modal2: tr.Tensor, cos_thres: float
                 item_label = i - (~batch_sim_mask[i, :i]).sum()
                 error += F.cross_entropy(item_sim, item_label)
                 count += 1
-        error = (error / count) if count else modal1.new_tensor(0.)
+        error = (error / count) if count else (cross_sim[0, 0] * 0)
     else:
         # create positive idx tensor on the same device as `sim`
         positive_pair_idx = cross_sim.new_tensor(range(cross_sim.shape[0]), dtype=tr.long)

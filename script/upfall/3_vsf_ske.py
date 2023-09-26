@@ -1,7 +1,7 @@
 """
 Multi-task: classification of all labels (11 classes of UP-Fall) +
     VSF contrastive (UP-Fall)
-Sensors: waist accelerometer, skeleton
+Sensors: skeleton
 """
 
 import itertools
@@ -68,10 +68,6 @@ def load_class_data(parquet_dir: str, window_size_sec=4, step_size_sec=2, min_st
         min_step_size_sec=min_step_size_sec,
         max_short_window=max_short_window,
         modal_cols={
-            UPFallConst.MODAL_INERTIA: {
-                'waist': ['belt_acc_x(m/s^2)', 'belt_acc_y(m/s^2)', 'belt_acc_z(m/s^2)'],
-                'wrist': ['wrist_acc_x(m/s^2)', 'wrist_acc_y(m/s^2)', 'wrist_acc_z(m/s^2)'],
-            },
             UPFallConst.MODAL_SKELETON: {
                 'ske': list(itertools.chain.from_iterable(
                     [f'x_{joint}', f'y_{joint}'] for joint in
@@ -99,8 +95,6 @@ def load_class_data(parquet_dir: str, window_size_sec=4, step_size_sec=2, min_st
         class_dict = defaultdict(dict)
         for label_idx, label_val in enumerate(label_list):
             idx = modal_dict['label'] == label_val
-            class_dict['waist'][label_idx] = modal_dict['waist'][idx]
-            class_dict['wrist'][label_idx] = modal_dict['wrist'][idx]
             class_dict['ske'][label_idx] = modal_dict['ske'][idx]
         class_dict = dict(class_dict)
 
@@ -208,7 +202,7 @@ if __name__ == '__main__':
     train_unlabelled_dict = three_unlabelled_dicts['train']
     valid_unlabelled_dict = three_unlabelled_dicts['valid']
     del three_unlabelled_dicts
-    assert train_cls_dict['waist'][0].shape[1:] == train_unlabelled_dict['waist'].shape[1:]
+    assert train_cls_dict['ske'][0].shape[1:] == train_unlabelled_dict['ske'].shape[1:]
 
     test_scores = []
     model_paths = []
@@ -248,7 +242,7 @@ if __name__ == '__main__':
         num_cls = len(train_cls_dict[list(train_cls_dict.keys())[0]])
         head = VsfDistributor(
             input_dims={modal: 128 for modal in backbone.keys()},  # affect contrast loss order
-            num_classes={'waist': num_cls, 'wrist': num_cls, 'ske': num_cls},  # affect class logit order
+            num_classes={'ske': num_cls},  # affect class logit order
             contrastive_loss_func=CMCLoss(cos_thres=1, temp=0.1),
             cls_dropout=0.5
         )
@@ -272,15 +266,11 @@ if __name__ == '__main__':
                 EarlyStop(EARLY_STOP_PATIENCE, smaller_better=False),
                 ReduceLROnPlateau(optimizer=optimizer, mode='max', patience=LR_SCHEDULER_PATIENCE, verbose=True)
             ],
-            callback_criterion='f1_waist'
+            callback_criterion='f1_ske'
         )
 
         # train and valid
-        augmenter = {
-            'waist': Rotation3D(angle_range=30),
-            'wrist': Rotation3D(angle_range=30)
-        }
-        train_set_cls = BalancedFusionDataset(deepcopy(train_cls_dict), augmenters=augmenter)
+        train_set_cls = BalancedFusionDataset(deepcopy(train_cls_dict))
         valid_set_cls = FusionDataset(deepcopy(valid_cls_dict))
 
         augmenter = {

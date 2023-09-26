@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 from vsf.flow.base_flow import BaseFlow
-from vsf.flow.flow_functions import f1_score_from_prob, ypred_2_categorical
+from vsf.flow.flow_functions import prob_2_categorical
 
 
 def mix_batch(x_cls: dict, y_cls: tr.Tensor, x_contrast: dict) -> tuple:
@@ -113,7 +113,8 @@ class VsfE2eFlow(BaseFlow):
         # metric scores
         y_true = tr.concatenate(y_true).to('cpu')
         for modal in y_preds.keys():
-            training_log[f'f1_{modal}'] = f1_score_from_prob(y_true, tr.concatenate(y_preds[modal]).to('cpu'))
+            y_pred = prob_2_categorical(tr.concatenate(y_preds[modal])).to('cpu')
+            training_log[f'f1_{modal}'] = metrics.f1_score(y_true, y_pred, average='macro')
         # learning rate
         training_log['lr'] = self.optimizer.param_groups[0]['lr']
         return training_log
@@ -170,7 +171,8 @@ class VsfE2eFlow(BaseFlow):
         # metric scores
         y_true = tr.concatenate(y_true).to('cpu')
         for modal in y_preds.keys():
-            valid_log[f'f1_{modal}'] = f1_score_from_prob(y_true, tr.concatenate(y_preds[modal]).to('cpu'))
+            y_pred = prob_2_categorical(tr.concatenate(y_preds[modal])).to('cpu')
+            valid_log[f'f1_{modal}'] = metrics.f1_score(y_true, y_pred, average='macro')
 
         return valid_log
 
@@ -198,7 +200,7 @@ class VsfE2eFlow(BaseFlow):
 
         # calculate score report
         y_true = tr.concatenate(y_true).to('cpu')
-        y_preds = {modal: ypred_2_categorical(tr.concatenate(y_preds[modal])).to('cpu')
+        y_preds = {modal: prob_2_categorical(tr.concatenate(y_preds[modal])).to('cpu')
                    for modal in y_preds.keys()}
         reports = {
             modal: pd.DataFrame(metrics.classification_report(y_true, y_preds[modal], digits=4, output_dict=True))

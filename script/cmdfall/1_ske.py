@@ -74,6 +74,8 @@ def load_data(parquet_dir: str, window_size_sec=4, step_size_sec=0.4,
                 col_data = df[col].tolist()
                 modal_dict[col] = np.concatenate(col_data)
 
+        print(f'label: {len(modal_dict["label"])}')
+
         # construct dict with classes are keys
         # key lvl 1: modal; key lvl 2: label; value: array shape [num window, widow size, channel]
         label_list = np.unique(modal_dict['label'])
@@ -115,7 +117,8 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     NUM_REPEAT = 3
-    NUM_EPOCH = 300
+    MAX_EPOCH = 300
+    MIN_EPOCH = 40
     LEARNING_RATE = 1e-3
     WEIGHT_DECAY = 1e-5
     EARLY_STOP_PATIENCE = 30
@@ -162,7 +165,7 @@ if __name__ == '__main__':
             model=model, optimizer=optimizer,
             device=args.device,
             callbacks=[
-                ModelCheckpoint(NUM_EPOCH, model_file_path, smaller_better=False),
+                ModelCheckpoint(MAX_EPOCH, model_file_path, smaller_better=False),
                 EarlyStop(EARLY_STOP_PATIENCE, smaller_better=False),
                 ReduceLROnPlateau(optimizer=optimizer, mode='max', patience=LR_SCHEDULER_PATIENCE, verbose=True)
             ],
@@ -177,7 +180,7 @@ if __name__ == '__main__':
         train_log, valid_log = flow.run(
             train_loader=train_loader,
             valid_loader=valid_loader,
-            num_epochs=NUM_EPOCH
+            max_epochs=MAX_EPOCH, min_epochs=MIN_EPOCH
         )
 
         # test

@@ -161,7 +161,7 @@ class BaseFlow(ABC):
     def run(self,
             train_loader: Union[DataLoader, Dict[str, DataLoader]],
             valid_loader: Union[DataLoader, Dict[str, DataLoader]],
-            num_epochs: int
+            max_epochs: int, min_epochs: int = 0
             ) -> Tuple[pd.DataFrame, pd.DataFrame]:
         """
         Train the model
@@ -170,6 +170,7 @@ class BaseFlow(ABC):
             train_loader: train data loader object
             valid_loader: valid data loader object
             num_epochs: maximum number of epochs
+            min_epochs: minimum number of epochs, only run callbacks after this number of epochs
 
         Returns:
             2 pandas.DataFrame objects containing train and valid log
@@ -179,16 +180,22 @@ class BaseFlow(ABC):
             assert len(train_loader) == len(valid_loader), \
                 'number of tasks in train_loader and valid_loader must be the same'
 
-        for epoch in range(1, num_epochs + 1):
-            print(f"-----------------\nEpoch {epoch}/{num_epochs}")
+        for epoch in range(1, max_epochs + 1):
+            print(f"-----------------\nEpoch {epoch}/{max_epochs}")
 
             self.train_epoch(train_loader)
             if valid_loader is not None:
                 self.valid_epoch(valid_loader)
 
-            callback_actions = self.run_callbacks(epoch)
-            if CallbackAction.STOP_TRAINING in callback_actions:
-                break
+            if epoch >= min_epochs:
+                callback_actions = self.run_callbacks(epoch)
+                if CallbackAction.STOP_TRAINING in callback_actions:
+                    break
+            else:
+                assert self.callback_criterion in self.valid_log[-1], \
+                    f'Criterion {self.callback_criterion} doesn\'t exist in valid log keys: {list(self.valid_log[-1].keys())}'
+                assert self.callback_criterion in self.train_log[-1], \
+                    f'Criterion {self.callback_criterion} doesn\'t exist in train log keys: {list(self.train_log[-1].keys())}'
 
         train_log = pd.DataFrame(self.train_log)
         valid_log = pd.DataFrame(self.valid_log)
