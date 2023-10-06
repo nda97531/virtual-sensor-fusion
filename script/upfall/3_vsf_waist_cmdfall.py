@@ -24,7 +24,7 @@ from vsf.data_generator.unlabelled_data_gen import UnlabelledFusionDataset
 from vsf.flow.torch_callbacks import ModelCheckpoint, EarlyStop
 from vsf.flow.vsf_flow import VsfE2eFlow
 from vsf.loss_functions.classification_loss import AutoCrossEntropyLoss
-from vsf.loss_functions.contrastive_loss import CMCLoss
+from vsf.loss_functions.contrastive_loss import MultiviewNTXentLoss
 from vsf.networks.backbone_tcn import TCN
 from vsf.networks.complete_model import VsfModel
 from vsf.networks.vsf_distributor import VsfDistributor
@@ -181,7 +181,7 @@ if __name__ == '__main__':
     WEIGHT_DECAY = 1e-5
     EARLY_STOP_PATIENCE = 30
     LR_SCHEDULER_PATIENCE = 15
-    TRAIN_BATCH_SIZE = 32
+    TRAIN_BATCH_SIZE = 64
 
     # load data
     three_class_dicts = load_class_data(parquet_dir=args.class_data_folder)
@@ -234,7 +234,7 @@ if __name__ == '__main__':
         head = VsfDistributor(
             input_dims={modal: 128 for modal in backbone.keys()},  # affect contrast loss order
             num_classes={'waist': len(train_cls_dict[list(train_cls_dict.keys())[0]])},  # affect class logit order
-            contrastive_loss_func=CMCLoss(cos_thres=1, temp=0.1),
+            contrastive_loss_func=MultiviewNTXentLoss(cos_thres=0.9, temp=0.1),
             cls_dropout=0.5
         )
         model = VsfModel(backbones=backbone, distributor_head=head)

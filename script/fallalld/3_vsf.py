@@ -23,7 +23,7 @@ from vsf.data_generator.classification_data_gen import FusionDataset, BalancedFu
 from vsf.data_generator.unlabelled_data_gen import UnlabelledFusionDataset
 from vsf.flow.torch_callbacks import ModelCheckpoint, EarlyStop
 from vsf.flow.vsf_flow import VsfE2eFlow
-from vsf.loss_functions.contrastive_loss import CMCLoss
+from vsf.loss_functions.contrastive_loss import MultiviewNTXentLoss
 from vsf.networks.backbone_tcn import TCN
 from vsf.networks.complete_model import VsfModel
 from vsf.networks.vsf_distributor import VsfDistributor
@@ -61,10 +61,10 @@ def load_class_data(parquet_dir: str, window_size_sec=4, step_size_sec=2,
     df = npy_dataset.run()
     list_sub_modal = list(itertools.chain.from_iterable(list(sub_dict) for sub_dict in npy_dataset.modal_cols.values()))
 
-    list_subjects = np.array([15, 3, 13, 9, 2, 1, 5, 4, 10, 11, 12, 14])
+    # list_subjects = np.array([15, 3, 13, 9, 2, 1, 5, 4, 10, 11, 12, 14])
     # split TRAIN, VALID, TEST
-    valid_subject = list_subjects[len(list_subjects) // 2:len(list_subjects) // 2 + 2]
-    train_subject = np.setdiff1d(list_subjects[np.arange(1, len(list_subjects), 2)], valid_subject)
+    valid_subject = np.array([5, 4])
+    train_subject = np.array([3, 1, 12])
 
     valid_set_idx = df['subject'].isin(valid_subject)
     valid_set = df.loc[valid_set_idx]
@@ -187,7 +187,7 @@ if __name__ == '__main__':
     WEIGHT_DECAY = 1e-5
     EARLY_STOP_PATIENCE = 30
     LR_SCHEDULER_PATIENCE = 15
-    TRAIN_BATCH_SIZE = 32
+    TRAIN_BATCH_SIZE = 64
 
     # load data
     three_class_dicts = load_class_data(parquet_dir=args.class_data_folder)
@@ -241,7 +241,7 @@ if __name__ == '__main__':
         head = VsfDistributor(
             input_dims={modal: 128 for modal in backbone.keys()},  # affect contrast loss order
             num_classes={'waist': num_cls, 'wrist': num_cls},  # affect class logit order
-            contrastive_loss_func=CMCLoss(cos_thres=1, temp=0.1),
+            contrastive_loss_func=MultiviewNTXentLoss(cos_thres=0.9, temp=0.1),
             cls_dropout=0.5
         )
         model = VsfModel(backbones=backbone, distributor_head=head)

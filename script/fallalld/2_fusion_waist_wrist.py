@@ -65,11 +65,11 @@ def load_data(parquet_dir: str, window_size_sec=4, step_size_sec=2,
     #     num_fall = all_window_labels.sum()
     #     list_subjects[subject] = num_fall / len(all_window_labels)
     # list_subjects = np.array(sorted(list(list_subjects), key=list_subjects.get, reverse=True))
-    list_subjects = np.array([15, 3, 13, 9, 2, 1, 5, 4, 10, 11, 12, 14])
 
+    # list_subjects = np.array([15, 3, 13, 9, 2, 1, 5, 4, 10, 11, 12, 14])
     # split TRAIN, VALID, TEST
-    valid_subject = list_subjects[len(list_subjects) // 2:len(list_subjects) // 2 + 2]
-    train_subject = np.setdiff1d(list_subjects[np.arange(1, len(list_subjects), 2)], valid_subject)
+    valid_subject = np.array([5, 4])
+    train_subject = np.array([3, 1, 12])
 
     valid_set_idx = df['subject'].isin(valid_subject)
     valid_set = df.loc[valid_set_idx]

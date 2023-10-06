@@ -74,8 +74,6 @@ def load_data(parquet_dir: str, window_size_sec=4, step_size_sec=0.4,
                 col_data = df[col].tolist()
                 modal_dict[col] = np.concatenate(col_data)
 
-        print(f'label: {len(modal_dict["label"])}')
-
         # construct dict with classes are keys
         # key lvl 1: modal; key lvl 2: label; value: array shape [num window, widow size, channel]
         label_list = np.unique(modal_dict['label'])
