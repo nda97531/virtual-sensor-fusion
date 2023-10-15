@@ -88,11 +88,9 @@ class FusionClsModel(nn.Module):
 
 
 class VsfModel(nn.Module):
-    MODAL_FUSE_CLS = 'fusion_cls'
-    MODAL_FUSE_CTR = 'fusion_contrast'
-
     def __init__(self, backbones: nn.ModuleDict, distributor_head: VsfDistributor,
-                 connect_feature_dims: Union[int, dict] = {}) -> None:
+                 connect_feature_dims: Union[list, dict] = {},
+                 cls_fusion_modals: list = (), ctr_fusion_modals: list = ()) -> None:
         """
         Combine backbones and heads, including classifier and contrastive loss head
 
@@ -103,6 +101,10 @@ class VsfModel(nn.Module):
                 this can be a list of 2 (applied for all modal),
                 or a dict with keys are modal names, values are lists of 2
                 default: don't use;
+            cls_fusion_modals: list of fusion modals for classification; each item represents a fusion modal, and is a
+                combined string of fused modals, separated by "+". For example if we want to fuse waist and wrist,
+                skeleton and waist, we have ['waist+wrist', 'skeleton+waist']
+            ctr_fusion_modals: same as `cls_fusion_modals` but for contrastive learning
         """
         super().__init__()
         self.backbones = backbones
@@ -117,11 +119,8 @@ class VsfModel(nn.Module):
             for modal, (in_feat, out_feat) in connect_feature_dims.items()
         })
 
-        self.apply_fusion_cls = (self.MODAL_FUSE_CLS in self.connect_fc.keys()) or \
-                                (self.MODAL_FUSE_CLS in self.distributor.classifiers.keys())
-
-        self.apply_fusion_ctr = (self.MODAL_FUSE_CTR in self.connect_fc.keys()) or \
-                                (self.MODAL_FUSE_CTR in self.distributor.input_dims.keys())
+        self.cls_fusion_modals = {f'{fused_modals}_cls': fused_modals.split('+') for fused_modals in cls_fusion_modals}
+        self.ctr_fusion_modals = {f'{fused_modals}_ctr': fused_modals.split('+') for fused_modals in ctr_fusion_modals}
 
     def forward(self, x_dict: Dict[str, tr.Tensor], backbone_kwargs: dict = {}, head_kwargs: dict = {}):
         """
@@ -145,29 +144,27 @@ class VsfModel(nn.Module):
         }
         # add fusion feature to x_dict, cls and contrast fusion are done separately because they may use
         # different number of modals
-        if self.apply_fusion_cls:
+        for comb_name, fused_modals in self.cls_fusion_modals.items():
             x_fus_cls = [
-                feat[head_kwargs['cls_mask'][modal]]
-                for modal, feat in x_dict.items() if head_kwargs['cls_mask'][modal].any()
+                x_dict[modal][head_kwargs['cls_mask'][modal]]
+                for modal in fused_modals if head_kwargs['cls_mask'][modal].any()
             ]
             if len(x_fus_cls):
-                x_dict[self.MODAL_FUSE_CLS] = tr.cat(x_fus_cls, dim=1)
-                head_kwargs['cls_mask'][self.MODAL_FUSE_CLS] = tr.tensor([True] * len(x_dict[self.MODAL_FUSE_CLS]))
-                head_kwargs['contrast_mask'][self.MODAL_FUSE_CLS] = tr.tensor(
-                    [False] * len(x_dict[self.MODAL_FUSE_CLS]))
+                x_dict[comb_name] = tr.cat(x_fus_cls, dim=1)
+                head_kwargs['cls_mask'][comb_name] = tr.tensor([True] * len(x_dict[comb_name]))
+                head_kwargs['contrast_mask'][comb_name] = tr.tensor([False] * len(x_dict[comb_name]))
 
-        if self.apply_fusion_ctr:
+        for comb_name, fused_modals in self.ctr_fusion_modals.items():
             x_fus_contrast = [
-                feat[head_kwargs['contrast_mask'][modal]]
-                for modal, feat in x_dict.items() if head_kwargs['contrast_mask'][modal].any()
+                x_dict[modal][head_kwargs['contrast_mask'][modal]]
+                for modal in fused_modals if head_kwargs['contrast_mask'][modal].any()
             ]
             if len(x_fus_contrast):
-                x_dict[self.MODAL_FUSE_CTR] = tr.cat(x_fus_contrast, dim=1)
-                head_kwargs['contrast_mask'][self.MODAL_FUSE_CTR] = tr.tensor([True] * len(x_dict[self.MODAL_FUSE_CTR]))
-                head_kwargs['cls_mask'][self.MODAL_FUSE_CTR] = tr.tensor([False] * len(x_dict[self.MODAL_FUSE_CTR]))
+                x_dict[comb_name] = tr.cat(x_fus_contrast, dim=1)
+                head_kwargs['contrast_mask'][comb_name] = tr.tensor([True] * len(x_dict[comb_name]))
+                head_kwargs['cls_mask'][comb_name] = tr.tensor([False] * len(x_dict[comb_name]))
 
         # run connect FCs, keep order of x_dict
-        # tanh shrink activation is used to connect backbone and distributor
         x_dict = {
             modal: F.relu(self.connect_fc[modal](x_dict[modal])) if modal in self.connect_fc.keys()
             else F.relu(x_dict[modal])

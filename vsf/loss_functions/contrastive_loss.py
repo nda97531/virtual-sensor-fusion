@@ -30,10 +30,10 @@ def torch_cosine_similarity(tensor1: tr.Tensor, tensor2: tr.Tensor,
     return sim
 
 
-def filtered_infonce_loss(modal1: tr.Tensor, modal2: tr.Tensor, cos_thres: float = 0.5,
-                          temp: float = 0.1, eps: float = 1e-6):
+def filtered_ntxent_loss(modal1: tr.Tensor, modal2: tr.Tensor, cos_thres: float = 1,
+                         temp: float = 0.1, eps: float = 1e-6):
     """
-    InfoNCE loss between 2 modalities
+    Filtered NT-Xent loss between 2 modalities
 
     Args:
         modal1: features of modal 1, tensor shape [batch, feature]
@@ -59,20 +59,20 @@ def filtered_infonce_loss(modal1: tr.Tensor, modal2: tr.Tensor, cos_thres: float
     # mask: False: too similar pairs; True: dissimilar pairs for infoNCE loss
     batch_sim_mask = (modal1_sim <= cos_thres) | (modal2_sim <= cos_thres)
     # must include diagonal because it's y_true
-    batch_size = len(cross_sim)
-    batch_sim_mask[range(batch_size), range(batch_size)] = True
+    range_batch_size = range(len(cross_sim))
+    batch_sim_mask[range_batch_size, range_batch_size] = True
 
     if not batch_sim_mask.all():
         error = 0
-        count = 0        
-        for i in range(batch_size):
+        count = 0
+        for i in range_batch_size:
             # exclude too similar pairs
             item_sim = cross_sim[i][batch_sim_mask[i]]
             if len(item_sim) > 1:
                 item_label = i - (~batch_sim_mask[i, :i]).sum()
                 error += F.cross_entropy(item_sim, item_label)
                 count += 1
-        error = (error / count) if count else modal1.new_tensor(0.)
+        error = (error / count) if count else (cross_sim[0, 0] * 0)
     else:
         # create positive idx tensor on the same device as `sim`
         positive_pair_idx = cross_sim.new_tensor(range(cross_sim.shape[0]), dtype=tr.long)
@@ -95,9 +95,9 @@ class ContrastiveLoss(nn.Module):
         raise NotImplementedError()
 
 
-class CMCLoss(ContrastiveLoss):
+class MultiviewNTXentLoss(ContrastiveLoss):
     def __init__(self, main_modal_idx: int = None, ignore_submodal: bool = False,
-                 cos_thres: float = 0.5, temp: float = 0.1, eps: float = 1e-6, *args, **kwargs):
+                 cos_thres: float = 1, temp: float = 0.1, eps: float = 1e-6, *args, **kwargs):
         """
         CMC loss for multiple modals
 
@@ -108,7 +108,7 @@ class CMCLoss(ContrastiveLoss):
             ignore_submodal: only relevant if `main_modal_idx` is provided;
                 whether to detach sub-modals when optimising CMC loss
             cos_thres: only include pairs with cosine similarity less than or equal to this threshold when
-                calculating infoNCE loss
+                calculating infoNCE loss; If =1 (max cosine), don't use filter at all
             temp: temperature param
             eps: epsilon added to norm2 when calculating cosine similarity to avoid division by 0
         """
@@ -134,8 +134,8 @@ class CMCLoss(ContrastiveLoss):
         num_components = 0
         for modal1_idx, modal2_idx in itertools.combinations(range(len(all_features)), 2):
             if self.main_modal_idx is None:
-                error += filtered_infonce_loss(all_features[modal1_idx], all_features[modal2_idx],
-                                               cos_thres=self.cos_thres, temp=self.temp, eps=self.eps)
+                error += filtered_ntxent_loss(all_features[modal1_idx], all_features[modal2_idx],
+                                              cos_thres=self.cos_thres, temp=self.temp, eps=self.eps)
                 num_components += 1
 
             elif self.main_modal_idx in {modal1_idx, modal2_idx}:
@@ -146,8 +146,8 @@ class CMCLoss(ContrastiveLoss):
                         modal2_feat = modal2_feat.detach()
                     else:
                         modal1_feat = modal1_feat.detach()
-                error += filtered_infonce_loss(modal1_feat, modal2_feat, 
-                                               cos_thres=self.cos_thres, temp=self.temp, eps=self.eps)
+                error += filtered_ntxent_loss(modal1_feat, modal2_feat,
+                                              cos_thres=self.cos_thres, temp=self.temp, eps=self.eps)
                 num_components += 1
 
         error /= num_components
@@ -264,7 +264,7 @@ if __name__ == '__main__':
     features = tr.stack(list(features.values()))
     # error = info_nce_loss(features['acc'], features['skeleton'])
 
-    print(f'CMC: {CMCLoss(main_modal_idx=None)(features)}')
-    print(f'CMC with main modal: {CMCLoss(main_modal_idx=0)(features)}')
+    print(f'CMC: {MultiviewNTXentLoss(main_modal_idx=None)(features)}')
+    print(f'CMC with main modal: {MultiviewNTXentLoss(main_modal_idx=0)(features)}')
     print(f'COCOA: {CocoaLoss()(features)}')
     print(f'COCOA2: {Cocoa2Loss()(features)}')

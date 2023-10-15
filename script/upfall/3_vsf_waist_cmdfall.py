@@ -24,7 +24,7 @@ from vsf.data_generator.unlabelled_data_gen import UnlabelledFusionDataset
 from vsf.flow.torch_callbacks import ModelCheckpoint, EarlyStop
 from vsf.flow.vsf_flow import VsfE2eFlow
 from vsf.loss_functions.classification_loss import AutoCrossEntropyLoss
-from vsf.loss_functions.contrastive_loss import CMCLoss
+from vsf.loss_functions.contrastive_loss import MultiviewNTXentLoss
 from vsf.networks.backbone_tcn import TCN
 from vsf.networks.complete_model import VsfModel
 from vsf.networks.vsf_distributor import VsfDistributor
@@ -68,7 +68,7 @@ def load_class_data(parquet_dir: str, window_size_sec=4, step_size_sec=2, min_st
     # odd subjects as train set
     train_set_idx = (df['subject'] % 2 != 0) & (~valid_set_idx)
     train_set = df.loc[train_set_idx]
-    # 1/3 subjects as test set
+    # even subjects as test set
     test_set_idx = ~(train_set_idx | valid_set_idx)
     test_set = df.loc[test_set_idx]
 
@@ -175,9 +175,10 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     NUM_REPEAT = 3
-    NUM_EPOCH = 300
+    MAX_EPOCH = 300
+    MIN_EPOCH = 40
     LEARNING_RATE = 1e-3
-    WEIGHT_DECAY = 0
+    WEIGHT_DECAY = 1e-5
     EARLY_STOP_PATIENCE = 30
     LR_SCHEDULER_PATIENCE = 15
     TRAIN_BATCH_SIZE = 32
@@ -233,7 +234,7 @@ if __name__ == '__main__':
         head = VsfDistributor(
             input_dims={modal: 128 for modal in backbone.keys()},  # affect contrast loss order
             num_classes={'waist': len(train_cls_dict[list(train_cls_dict.keys())[0]])},  # affect class logit order
-            contrastive_loss_func=CMCLoss(cos_thres=0.5, temp=0.1),
+            contrastive_loss_func=MultiviewNTXentLoss(cos_thres=0.9, temp=0.1),
             cls_dropout=0.5
         )
         model = VsfModel(backbones=backbone, distributor_head=head)
@@ -252,7 +253,7 @@ if __name__ == '__main__':
             optimizer=optimizer,
             device=args.device,
             callbacks=[
-                ModelCheckpoint(NUM_EPOCH, model_file_path, smaller_better=False),
+                ModelCheckpoint(MAX_EPOCH, model_file_path, smaller_better=False),
                 EarlyStop(EARLY_STOP_PATIENCE, smaller_better=False),
                 ReduceLROnPlateau(optimizer=optimizer, mode='max', patience=LR_SCHEDULER_PATIENCE, verbose=True)
             ],
@@ -285,7 +286,7 @@ if __name__ == '__main__':
         train_log, valid_log = flow.run(
             train_loader=train_loader,
             valid_loader=valid_loader,
-            num_epochs=NUM_EPOCH
+            max_epochs=MAX_EPOCH, min_epochs=MIN_EPOCH
         )
 
         # test

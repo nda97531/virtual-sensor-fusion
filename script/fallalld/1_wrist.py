@@ -58,10 +58,10 @@ def load_data(parquet_dir: str, window_size_sec=4, step_size_sec=2,
     list_sub_modal = list(itertools.chain.from_iterable(list(sub_dict) for sub_dict in npy_dataset.modal_cols.values()))
     list_sub_modal.remove('_')
 
-    list_subjects = np.array([15, 3, 13, 9, 2, 1, 5, 4, 10, 11, 12, 14])
+    # list_subjects = np.array([15, 3, 13, 9, 2, 1, 5, 4, 10, 11, 12, 14])
     # split TRAIN, VALID, TEST
-    valid_subject = list_subjects[len(list_subjects) // 2:len(list_subjects) // 2 + 2]
-    train_subject = np.setdiff1d(list_subjects[np.arange(1, len(list_subjects), 2)], valid_subject)
+    valid_subject = np.array([5, 4])
+    train_subject = np.array([3, 1, 12])
 
     valid_set_idx = df['subject'].isin(valid_subject)
     valid_set = df.loc[valid_set_idx]
@@ -120,9 +120,10 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     NUM_REPEAT = 3
-    NUM_EPOCH = 300
+    MAX_EPOCH = 300
+    MIN_EPOCH = 40
     LEARNING_RATE = 1e-3
-    WEIGHT_DECAY = 0
+    WEIGHT_DECAY = 1e-5
     EARLY_STOP_PATIENCE = 30
     LR_SCHEDULER_PATIENCE = 15
     TRAIN_BATCH_SIZE = 32
@@ -152,7 +153,7 @@ if __name__ == '__main__':
             n_features_in=128,
             n_classes_out=len(train_dict)
         )
-        model = BasicClsModel(backbone=backbone, classifier=classifier, dropout=0.5)
+        model = BasicClsModel(backbone=backbone, classifier=classifier)
 
         # create folder to save result
         save_folder = f'{args.output_folder}/{args.name}'
@@ -167,7 +168,7 @@ if __name__ == '__main__':
             model=model, optimizer=optimizer,
             device=args.device,
             callbacks=[
-                ModelCheckpoint(NUM_EPOCH, model_file_path, smaller_better=False),
+                ModelCheckpoint(MAX_EPOCH, model_file_path, smaller_better=False),
                 EarlyStop(EARLY_STOP_PATIENCE, smaller_better=False),
                 ReduceLROnPlateau(optimizer=optimizer, mode='max', patience=LR_SCHEDULER_PATIENCE, verbose=True)
             ],
@@ -183,7 +184,7 @@ if __name__ == '__main__':
         train_log, valid_log = flow.run(
             train_loader=train_loader,
             valid_loader=valid_loader,
-            num_epochs=NUM_EPOCH
+            max_epochs=MAX_EPOCH, min_epochs=MIN_EPOCH
         )
 
         # test

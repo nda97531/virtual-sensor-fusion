@@ -15,7 +15,10 @@ class VsfDistributor(nn.Module):
         All modals are contrasted together, some of them output class probabilities.
 
         Args:
-            input_dims: dict[modal name]: input feature dimension (int); dict order influences contrastive loss modal order
+            input_dims: dict[modal name]: input feature dimension (int) of ALL modals;
+                dict order influences contrastive loss modal order
+                (a modal cannot appear in `num_classes` but not in here,
+                so this doesn't support classification without contrast)
             num_classes: dict[modal name]: number of output classes (int);
                 all keys of this dict must also be presented in `input_dims`;
                 dict order influences class logit dict output order

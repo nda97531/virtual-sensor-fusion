@@ -1,7 +1,7 @@
 """
 Multi-task: classification of all labels (20 classes of CMDFall) +
     VSF contrastive (all data of CMDFall, including unknown label)
-Sensors: 2accelerometers, skeleton
+Sensors: 2 accelerometers, skeleton
 """
 
 import itertools
@@ -23,7 +23,7 @@ from vsf.data_generator.classification_data_gen import FusionDataset, BalancedFu
 from vsf.data_generator.unlabelled_data_gen import UnlabelledFusionDataset
 from vsf.flow.torch_callbacks import ModelCheckpoint, EarlyStop
 from vsf.flow.vsf_flow import VsfE2eFlow
-from vsf.loss_functions.contrastive_loss import CMCLoss
+from vsf.loss_functions.contrastive_loss import MultiviewNTXentLoss
 from vsf.networks.backbone_tcn import TCN
 from vsf.networks.complete_model import VsfModel
 from vsf.networks.vsf_distributor import VsfDistributor
@@ -68,8 +68,8 @@ def load_class_data(parquet_dir: str, window_size_sec=4, step_size_sec=0.4) -> d
         step_size_sec=step_size_sec,
         modal_cols={
             CMDFallConst.MODAL_INERTIA: {
-                'acc': ['waist_acc_x(m/s^2)', 'waist_acc_y(m/s^2)', 'waist_acc_z(m/s^2)',
-                        'wrist_acc_x(m/s^2)', 'wrist_acc_y(m/s^2)', 'wrist_acc_z(m/s^2)']
+                'waist': ['waist_acc_x(m/s^2)', 'waist_acc_y(m/s^2)', 'waist_acc_z(m/s^2)'],
+                'wrist': ['wrist_acc_x(m/s^2)', 'wrist_acc_y(m/s^2)', 'wrist_acc_z(m/s^2)']
             },
             CMDFallConst.MODAL_SKELETON: {
                 'ske': [c.format(kinect_id=3) for c in CMDFallConst.SELECTED_SKELETON_COLS]
@@ -100,7 +100,8 @@ def load_class_data(parquet_dir: str, window_size_sec=4, step_size_sec=0.4) -> d
             # don't count 'unknown' class (class index is 0)
             if label_idx != 0:
                 idx = modal_dict['label'] == label_val
-                class_dict['acc'][label_idx - 1] = modal_dict['acc'][idx]
+                class_dict['waist'][label_idx - 1] = modal_dict['waist'][idx]
+                class_dict['wrist'][label_idx - 1] = modal_dict['wrist'][idx]
                 class_dict['ske'][label_idx - 1] = modal_dict['ske'][idx]
         class_dict = dict(class_dict)
 
@@ -134,8 +135,8 @@ def load_unlabelled_data(parquet_dir: str, window_size_sec=4, step_size_sec=1) -
         step_size_sec=step_size_sec,
         modal_cols={
             CMDFallConst.MODAL_INERTIA: {
-                'acc': ['waist_acc_x(m/s^2)', 'waist_acc_y(m/s^2)', 'waist_acc_z(m/s^2)',
-                        'wrist_acc_x(m/s^2)', 'wrist_acc_y(m/s^2)', 'wrist_acc_z(m/s^2)']
+                'waist': ['waist_acc_x(m/s^2)', 'waist_acc_y(m/s^2)', 'waist_acc_z(m/s^2)'],
+                'wrist': ['wrist_acc_x(m/s^2)', 'wrist_acc_y(m/s^2)', 'wrist_acc_z(m/s^2)']
             },
             CMDFallConst.MODAL_SKELETON: {
                 'ske': [c.format(kinect_id=3) for c in CMDFallConst.SELECTED_SKELETON_COLS]
@@ -175,7 +176,7 @@ if __name__ == '__main__':
                         help='name of the experiment to create a folder to save weights')
 
     parser.add_argument('--data-folder', '-data',
-                        default='/home/ducanh/parquet_datasets/CMDFall/',
+                        default='/mnt/data_partition/UCD/UCD04 - Virtual sensor fusion/processed_parquet/CMDFall',
                         help='path to parquet data folder')
 
     parser.add_argument('--output-folder', '-o', default='./log/cmdfall',
@@ -184,21 +185,22 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     NUM_REPEAT = 3
-    NUM_EPOCH = 300
+    MAX_EPOCH = 300
+    MIN_EPOCH = 40
     LEARNING_RATE = 1e-3
-    WEIGHT_DECAY = 0
+    WEIGHT_DECAY = 1e-5
     EARLY_STOP_PATIENCE = 30
     LR_SCHEDULER_PATIENCE = 15
     TRAIN_BATCH_SIZE = 32
 
     # load data
-    three_class_dicts = load_class_data(parquet_dir=args.data_folder, window_size_sec=4, step_size_sec=0.4)
+    three_class_dicts = load_class_data(parquet_dir=args.data_folder)
     train_cls_dict = three_class_dicts['train']
     valid_cls_dict = three_class_dicts['valid']
     test_cls_dict = three_class_dicts['test']
     del three_class_dicts
 
-    three_unlabelled_dicts = load_unlabelled_data(parquet_dir=args.data_folder, window_size_sec=4, step_size_sec=1)
+    three_unlabelled_dicts = load_unlabelled_data(parquet_dir=args.data_folder)
     train_unlabelled_dict = three_unlabelled_dicts['train']
     valid_unlabelled_dict = three_unlabelled_dicts['valid']
     del three_unlabelled_dicts
@@ -209,8 +211,17 @@ if __name__ == '__main__':
     for _ in range(NUM_REPEAT):
         # create model
         backbone = tr.nn.ModuleDict({
-            'acc': TCN(
-                input_shape=train_cls_dict['acc'][0].shape[1:],
+            'waist': TCN(
+                input_shape=train_cls_dict['waist'][0].shape[1:],
+                how_flatten='spatial attention gap',
+                n_tcn_channels=(64,) * 5 + (128,) * 2,
+                tcn_drop_rate=0.5,
+                use_spatial_dropout=True,
+                conv_norm='batch',
+                attention_conv_norm=''
+            ),
+            'wrist': TCN(
+                input_shape=train_cls_dict['wrist'][0].shape[1:],
                 how_flatten='spatial attention gap',
                 n_tcn_channels=(64,) * 5 + (128,) * 2,
                 tcn_drop_rate=0.5,
@@ -232,8 +243,8 @@ if __name__ == '__main__':
         num_cls = len(train_cls_dict[list(train_cls_dict.keys())[0]])
         head = VsfDistributor(
             input_dims={modal: 128 for modal in backbone.keys()},  # affect contrast loss order
-            num_classes={'acc': num_cls, 'ske': num_cls},  # affect class logit order
-            contrastive_loss_func=CMCLoss(cos_thres=0.5, temp=0.1),
+            num_classes={'waist': num_cls, 'wrist': num_cls, 'ske': num_cls},  # affect class logit order
+            contrastive_loss_func=MultiviewNTXentLoss(cos_thres=0.9, temp=0.1),
             cls_dropout=0.5
         )
         model = VsfModel(backbones=backbone, distributor_head=head)
@@ -252,22 +263,24 @@ if __name__ == '__main__':
             optimizer=optimizer,
             device=args.device,
             callbacks=[
-                ModelCheckpoint(NUM_EPOCH, model_file_path, smaller_better=False),
+                ModelCheckpoint(MAX_EPOCH, model_file_path, smaller_better=False),
                 EarlyStop(EARLY_STOP_PATIENCE, smaller_better=False),
                 ReduceLROnPlateau(optimizer=optimizer, mode='max', patience=LR_SCHEDULER_PATIENCE, verbose=True)
             ],
-            callback_criterion='f1_acc'
+            callback_criterion='f1_waist'
         )
 
         # train and valid
         augmenter = {
-            'acc': Rotation3D(angle_range=30, separate_triaxial=True)
+            'waist': Rotation3D(angle_range=30),
+            'wrist': Rotation3D(angle_range=30)
         }
         train_set_cls = BalancedFusionDataset(deepcopy(train_cls_dict), augmenters=augmenter)
         valid_set_cls = FusionDataset(deepcopy(valid_cls_dict))
 
         augmenter = {
-            'acc': Rotation3D(angle_range=180, separate_triaxial=True),
+            'waist': Rotation3D(angle_range=180),
+            'wrist': Rotation3D(angle_range=180),
             'ske': Rotation3D(angle_range=180, rot_axis=np.array([0, 0, 1]))
         }
         train_set_unlabelled = UnlabelledFusionDataset(deepcopy(train_unlabelled_dict), augmenters=augmenter)
@@ -284,7 +297,7 @@ if __name__ == '__main__':
         train_log, valid_log = flow.run(
             train_loader=train_loader,
             valid_loader=valid_loader,
-            num_epochs=NUM_EPOCH
+            max_epochs=MAX_EPOCH, min_epochs=MIN_EPOCH
         )
 
         # test
