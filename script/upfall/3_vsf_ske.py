@@ -189,7 +189,7 @@ if __name__ == '__main__':
     WEIGHT_DECAY = 1e-5
     EARLY_STOP_PATIENCE = 30
     LR_SCHEDULER_PATIENCE = 15
-    TRAIN_BATCH_SIZE = 64
+    TRAIN_BATCH_SIZE = 32
 
     # load data
     three_class_dicts = load_class_data(parquet_dir=args.class_data_folder)

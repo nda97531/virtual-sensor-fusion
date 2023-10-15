@@ -45,7 +45,7 @@ class ModelCheckpoint(TorchCallback):
         assert epoch != 0, 'Epoch starts at 1'
 
         new_result = self.update_latest_result(valid_metric)
-        save_path = self.save_path.format(new_result)
+        save_path = self.save_path.format(epoch)
 
         # if save every epoch
         if not self.save_best_only:
@@ -65,8 +65,6 @@ class ModelCheckpoint(TorchCallback):
 
         # save last epoch
         if self.num_epochs == epoch:
-            save_path, extension = os.path.splitext(save_path)
-            save_path = f'{save_path}_last_epoch{extension}'
             tr.save(model.state_dict() if self.save_weights_only else model, save_path)
             print(f"Save last epoch to {save_path}.")
 

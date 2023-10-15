@@ -176,7 +176,7 @@ if __name__ == '__main__':
                         help='name of the experiment to create a folder to save weights')
 
     parser.add_argument('--data-folder', '-data',
-                        default='/home/ducanh/parquet_datasets/CMDFall/',
+                        default='/mnt/data_partition/UCD/UCD04 - Virtual sensor fusion/processed_parquet/CMDFall',
                         help='path to parquet data folder')
 
     parser.add_argument('--output-folder', '-o', default='./log/cmdfall',
@@ -191,7 +191,7 @@ if __name__ == '__main__':
     WEIGHT_DECAY = 1e-5
     EARLY_STOP_PATIENCE = 30
     LR_SCHEDULER_PATIENCE = 15
-    TRAIN_BATCH_SIZE = 64
+    TRAIN_BATCH_SIZE = 32
 
     # load data
     three_class_dicts = load_class_data(parquet_dir=args.data_folder)

@@ -1,6 +1,7 @@
 """
-Single task: classification of all labels
-Sensor fusion: waist acc + skeleton
+Multi-task: classification of all labels (20 classes of CMDFall) +
+    VSF contrastive (all data of CMDFall, including unknown label)
+Sensors: 2 accelerometers, skeleton
 """
 
 import itertools
@@ -10,6 +11,7 @@ from copy import deepcopy
 from glob import glob
 
 import numpy as np
+import pandas as pd
 import torch as tr
 from loguru import logger
 from torch.optim.lr_scheduler import ReduceLROnPlateau
@@ -18,24 +20,43 @@ from torch.utils.data import DataLoader
 from vahar_datasets_formatter.vahar.datasets.cmdfall_dataset import CMDFallNpyWindow, CMDFallConst
 from vsf.data_generator.augmentation import Rotation3D
 from vsf.data_generator.classification_data_gen import FusionDataset, BalancedFusionDataset
-from vsf.flow.single_task_flow import SingleTaskFlow
+from vsf.data_generator.unlabelled_data_gen import UnlabelledFusionDataset
 from vsf.flow.torch_callbacks import ModelCheckpoint, EarlyStop
+from vsf.flow.vsf_flow import VsfE2eFlow
+from vsf.loss_functions.contrastive_loss import MultiviewNTXentLoss
 from vsf.networks.backbone_tcn import TCN
-from vsf.networks.classifier import BasicClassifier
-from vsf.networks.complete_model import FusionClsModel
+from vsf.networks.complete_model import VsfModel
+from vsf.networks.vsf_distributor import VsfDistributor
 
 
-def load_data(parquet_dir: str, window_size_sec=4, step_size_sec=0.4,
-              min_step_size_sec=None, max_short_window=None) -> dict:
+def split_3_sets(df: pd.DataFrame) -> tuple:
     """
-    Load all the UP-Fall dataset into a dataframe
+    Split a DF into 3 DF: train, valid, test
+    Args:
+        df: a DF with a column `subject`
+
+    Returns:
+        a tuple of 3 DFs: train, valid, test
+    """
+    train_set_idx = df['subject'] % 2 != 0
+    train_set = df.loc[train_set_idx]
+
+    valid_set_idx = df['subject'] % 10 == 0
+    valid_set = df.loc[valid_set_idx]
+
+    test_set_idx = ~(train_set_idx | valid_set_idx)
+    test_set = df.loc[test_set_idx]
+    return train_set, valid_set, test_set
+
+
+def load_class_data(parquet_dir: str, window_size_sec=4, step_size_sec=0.4) -> dict:
+    """
+    Load all 20 classes of the CMDFall dataset into a dict
 
     Args:
         parquet_dir: path to processed parquet folder
         window_size_sec: window size in second for sliding window
         step_size_sec: step size in second for sliding window
-        min_step_size_sec: min step size in second for shifting window
-        max_short_window: number of window for each session of short activities
 
     Returns:
         a 3-level dict:
@@ -45,11 +66,10 @@ def load_data(parquet_dir: str, window_size_sec=4, step_size_sec=0.4,
         parquet_root_dir=parquet_dir,
         window_size_sec=window_size_sec,
         step_size_sec=step_size_sec,
-        min_step_size_sec=min_step_size_sec,
-        max_short_window=max_short_window,
         modal_cols={
             CMDFallConst.MODAL_INERTIA: {
-                'acc': ['waist_acc_x(m/s^2)', 'waist_acc_y(m/s^2)', 'waist_acc_z(m/s^2)']
+                'acc': ['waist_acc_x(m/s^2)', 'waist_acc_y(m/s^2)', 'waist_acc_z(m/s^2)',
+                        'wrist_acc_x(m/s^2)', 'wrist_acc_y(m/s^2)', 'wrist_acc_z(m/s^2)']
             },
             CMDFallConst.MODAL_SKELETON: {
                 'ske': [c.format(kinect_id=3) for c in CMDFallConst.SELECTED_SKELETON_COLS]
@@ -60,14 +80,7 @@ def load_data(parquet_dir: str, window_size_sec=4, step_size_sec=0.4,
     list_sub_modal = list(itertools.chain.from_iterable(list(sub_dict) for sub_dict in npy_dataset.modal_cols.values()))
 
     # split TRAIN, VALID, TEST
-    train_set_idx = df['subject'] % 2 != 0
-    train_set = df.loc[train_set_idx]
-
-    valid_set_idx = df['subject'] % 10 == 0
-    valid_set = df.loc[valid_set_idx]
-
-    test_set_idx = ~(train_set_idx | valid_set_idx)
-    test_set = df.loc[test_set_idx]
+    train_set, valid_set, test_set = split_3_sets(df)
 
     def concat_data_in_df(df):
         # concat sessions in cells into an array
@@ -102,21 +115,72 @@ def load_data(parquet_dir: str, window_size_sec=4, step_size_sec=0.4,
     return three_dicts
 
 
+def load_unlabelled_data(parquet_dir: str, window_size_sec=4, step_size_sec=1) -> dict:
+    """
+    Load all the CMDFall dataset into a dict
+
+    Args:
+        parquet_dir: path to processed parquet folder
+        window_size_sec: window size in second for sliding window
+        step_size_sec: step size in second for sliding window
+
+    Returns:
+        a 2-level dict:
+            dict[train/valid/test][submodal name] = windows array shape [n, ..., channel]
+    """
+    npy_dataset = CMDFallNpyWindow(
+        parquet_root_dir=parquet_dir,
+        window_size_sec=window_size_sec,
+        step_size_sec=step_size_sec,
+        modal_cols={
+            CMDFallConst.MODAL_INERTIA: {
+                'acc': ['waist_acc_x(m/s^2)', 'waist_acc_y(m/s^2)', 'waist_acc_z(m/s^2)',
+                        'wrist_acc_x(m/s^2)', 'wrist_acc_y(m/s^2)', 'wrist_acc_z(m/s^2)']
+            },
+            CMDFallConst.MODAL_SKELETON: {
+                'ske': [c.format(kinect_id=3) for c in CMDFallConst.SELECTED_SKELETON_COLS]
+            }
+        }
+    )
+    df = npy_dataset.run()
+
+    # split TRAIN, VALID, TEST
+    train_set, valid_set, test_set = split_3_sets(df)
+
+    def concat_data_in_df(df):
+        # concat sessions in cells into an array
+        # dict key: modal (including label); value: array shape [num window, widow size, channel]
+        modal_dict = {}
+        for col in df.columns:
+            if col not in {'subject', 'label'}:
+                col_data = df[col].tolist()
+                modal_dict[col] = np.concatenate(col_data)
+        return modal_dict
+
+    three_dicts = {
+        'train': concat_data_in_df(train_set),
+        'valid': concat_data_in_df(valid_set),
+        'test': concat_data_in_df(test_set)
+    }
+    return three_dicts
+
+
 if __name__ == '__main__':
     import argparse
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--device', '-d', default='cuda:0')
 
-    parser.add_argument('--name', '-n', default='exp1_2',
+    parser.add_argument('--name', '-n', default='exp_vsf',
                         help='name of the experiment to create a folder to save weights')
 
     parser.add_argument('--data-folder', '-data',
-                        default='/home/ducanh/parquet_datasets/CMDFall/',
+                        default='/mnt/data_partition/UCD/UCD04 - Virtual sensor fusion/processed_parquet/CMDFall',
                         help='path to parquet data folder')
 
     parser.add_argument('--output-folder', '-o', default='./log/cmdfall',
                         help='path to save training logs and model weights')
+
     args = parser.parse_args()
 
     NUM_REPEAT = 3
@@ -129,11 +193,16 @@ if __name__ == '__main__':
     TRAIN_BATCH_SIZE = 32
 
     # load data
-    three_dicts = load_data(parquet_dir=args.data_folder)
-    train_dict = three_dicts['train']
-    valid_dict = three_dicts['valid']
-    test_dict = three_dicts['test']
-    del three_dicts
+    three_class_dicts = load_class_data(parquet_dir=args.data_folder)
+    train_cls_dict = three_class_dicts['train']
+    valid_cls_dict = three_class_dicts['valid']
+    test_cls_dict = three_class_dicts['test']
+    del three_class_dicts
+
+    three_unlabelled_dicts = load_unlabelled_data(parquet_dir=args.data_folder)
+    train_unlabelled_dict = three_unlabelled_dicts['train']
+    valid_unlabelled_dict = three_unlabelled_dicts['valid']
+    del three_unlabelled_dicts
 
     test_scores = []
     model_paths = []
@@ -142,7 +211,7 @@ if __name__ == '__main__':
         # create model
         backbone = tr.nn.ModuleDict({
             'acc': TCN(
-                input_shape=train_dict['acc'][0].shape[1:],
+                input_shape=train_cls_dict['acc'][0].shape[1:],
                 how_flatten='spatial attention gap',
                 n_tcn_channels=(64,) * 5 + (128,) * 2,
                 tcn_drop_rate=0.5,
@@ -151,7 +220,7 @@ if __name__ == '__main__':
                 attention_conv_norm=''
             ),
             'ske': TCN(
-                input_shape=train_dict['ske'][0].shape[1:],
+                input_shape=train_cls_dict['ske'][0].shape[1:],
                 how_flatten='spatial attention gap',
                 n_tcn_channels=(64,) * 4 + (128,) * 2,
                 tcn_drop_rate=0.5,
@@ -160,13 +229,15 @@ if __name__ == '__main__':
                 attention_conv_norm=''
             )
         })
-        classifier = BasicClassifier(
-            n_features_in=256,
-            n_classes_out=len(train_dict[list(train_dict.keys())[0]])
+
+        num_cls = len(train_cls_dict[list(train_cls_dict.keys())[0]])
+        head = VsfDistributor(
+            input_dims={modal: 128 for modal in backbone.keys()},  # affect contrast loss order
+            num_classes={'acc': num_cls, 'ske': num_cls},  # affect class logit order
+            contrastive_loss_func=MultiviewNTXentLoss(cos_thres=0.9, temp=0.1),
+            cls_dropout=0.5
         )
-        model = FusionClsModel(backbones=backbone,
-                               backbone_output_dims={k: 128 for k in backbone.keys()},
-                               classifier=classifier)
+        model = VsfModel(backbones=backbone, distributor_head=head)
 
         # create folder to save result
         save_folder = f'{args.output_folder}/{args.name}'
@@ -177,25 +248,40 @@ if __name__ == '__main__':
         # create training config
         optimizer = tr.optim.Adam(model.parameters(), lr=LEARNING_RATE, weight_decay=WEIGHT_DECAY)
         model_file_path = f'{save_folder}/model.pth'
-        flow = SingleTaskFlow(
-            model=model, optimizer=optimizer,
+        flow = VsfE2eFlow(
+            model=model,
+            optimizer=optimizer,
             device=args.device,
             callbacks=[
                 ModelCheckpoint(MAX_EPOCH, model_file_path, smaller_better=False),
                 EarlyStop(EARLY_STOP_PATIENCE, smaller_better=False),
                 ReduceLROnPlateau(optimizer=optimizer, mode='max', patience=LR_SCHEDULER_PATIENCE, verbose=True)
             ],
-            callback_criterion='f1'
+            callback_criterion='f1_acc'
         )
 
         # train and valid
         augmenter = {
-            'acc': Rotation3D(angle_range=30)
+            'acc': Rotation3D(angle_range=30, separate_triaxial=True)
         }
-        train_set = BalancedFusionDataset(deepcopy(train_dict), augmenters=augmenter)
-        valid_set = FusionDataset(deepcopy(valid_dict))
-        train_loader = DataLoader(train_set, batch_size=TRAIN_BATCH_SIZE, shuffle=True)
-        valid_loader = DataLoader(valid_set, batch_size=64, shuffle=False)
+        train_set_cls = BalancedFusionDataset(deepcopy(train_cls_dict), augmenters=augmenter)
+        valid_set_cls = FusionDataset(deepcopy(valid_cls_dict))
+
+        augmenter = {
+            'acc': Rotation3D(angle_range=180, separate_triaxial=True),
+            'ske': Rotation3D(angle_range=180, rot_axis=np.array([0, 0, 1]))
+        }
+        train_set_unlabelled = UnlabelledFusionDataset(deepcopy(train_unlabelled_dict), augmenters=augmenter)
+        valid_set_unlabelled = UnlabelledFusionDataset(deepcopy(valid_unlabelled_dict))
+
+        train_loader = {
+            'cls': DataLoader(train_set_cls, batch_size=TRAIN_BATCH_SIZE // 2, shuffle=True),
+            'contrast': DataLoader(train_set_unlabelled, batch_size=TRAIN_BATCH_SIZE // 2, shuffle=True)
+        }
+        valid_loader = {
+            'cls': DataLoader(valid_set_cls, batch_size=64, shuffle=False),
+            'contrast': DataLoader(valid_set_unlabelled, batch_size=64, shuffle=False),
+        }
         train_log, valid_log = flow.run(
             train_loader=train_loader,
             valid_loader=valid_loader,
@@ -203,7 +289,7 @@ if __name__ == '__main__':
         )
 
         # test
-        test_set = FusionDataset(deepcopy(test_dict))
+        test_set = FusionDataset(deepcopy(test_cls_dict))
         test_loader = DataLoader(test_set, batch_size=64, shuffle=False)
         test_score = flow.run_test_epoch(test_loader, model_state_dict=tr.load(model_file_path))
         test_scores.append(test_score)

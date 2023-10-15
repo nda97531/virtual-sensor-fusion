@@ -107,14 +107,14 @@ if __name__ == '__main__':
                         help='name of the experiment to create a folder to save weights')
 
     parser.add_argument('--data-folder', '-data',
-                        default='/home/ducanh/parquet_datasets/UP-Fall/',
+                        default='/mnt/data_partition/UCD/UCD04 - Virtual sensor fusion/processed_parquet/UP-Fall/',
                         help='path to parquet data folder')
 
     parser.add_argument('--output-folder', '-o', default='./log/upfall',
                         help='path to save training logs and model weights')
     args = parser.parse_args()
 
-    NUM_REPEAT = 3
+    NUM_REPEAT = 1
     MAX_EPOCH = 300
     MIN_EPOCH = 40
     LEARNING_RATE = 1e-3
