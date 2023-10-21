@@ -171,11 +171,11 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--device', '-d', default='cuda:0')
 
-    parser.add_argument('--name', '-n', default='exp_vsf',
+    parser.add_argument('--name', '-n', required=True,
                         help='name of the experiment to create a folder to save weights')
 
     parser.add_argument('--data-folder', '-data',
-                        default='/mnt/data_partition/UCD/UCD04 - Virtual sensor fusion/processed_parquet/CMDFall',
+                        default='/home/ducanh/parquet_datasets/CMDFall',
                         help='path to parquet data folder')
 
     parser.add_argument('--output-folder', '-o', default='./log/cmdfall',

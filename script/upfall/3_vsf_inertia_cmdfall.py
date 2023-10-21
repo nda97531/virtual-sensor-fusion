@@ -163,11 +163,11 @@ if __name__ == '__main__':
                         help='name of the experiment to create a folder to save weights')
 
     parser.add_argument('--class-data-folder', '-lbl',
-                        default='/mnt/data_partition/UCD/UCD04 - Virtual sensor fusion/processed_parquet/UP-Fall/',
+                        default='/home/ducanh/parquet_datasets/UP-Fall/',
                         help='path to parquet data folder - classification task')
 
     parser.add_argument('--unlabelled-data-folder', '-ulb',
-                        default='/mnt/data_partition/UCD/UCD04 - Virtual sensor fusion/processed_parquet/CMDFall/',
+                        default='/home/ducanh/parquet_datasets/CMDFall/',
                         help='path to parquet data folder - contrastive learning task')
 
     parser.add_argument('--output-folder', '-o', default='./log/upfall',

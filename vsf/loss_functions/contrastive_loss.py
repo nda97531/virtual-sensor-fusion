@@ -3,6 +3,7 @@ import itertools
 import torch as tr
 import torch.nn.functional as F
 from torch import nn
+import numpy as np
 
 
 def torch_cosine_similarity(tensor1: tr.Tensor, tensor2: tr.Tensor,
@@ -255,14 +256,92 @@ class Cocoa2Loss(ContrastiveLoss):
         return error
 
 
+def cmkm_loss(modal1: tr.Tensor, modal2: tr.Tensor, gamma_thres: float, top_k: int = 1,
+              temp: float = 0.1, eps: float = 1e-6):
+    """
+    Calculate contrastive loss with cross-modal knowledge mining, but don't use another pre-trained model like the
+    original version.
+    Source: https://github.com/razzu/cmc-cmkm/blob/main/models/cmc_cvkm.py
+
+    Args:
+        modal1: features of modal 1, tensor shape [batch, feature]
+        modal2: features of modal 2, tensor shape [batch, feature]
+        gamma_thres: cosine similarity threshold to prune false negatives
+        top_k: top K similar pairs to set as positive
+        temp: temperature param
+        eps: small epsilon to avoid division by 0
+
+    Returns:
+        a pytorch float
+    """
+    assert modal1.shape == modal2.shape
+    batch_size = len(modal1)
+
+    # calculate intra-modal similarity
+    length1 = tr.sqrt((modal1 ** 2).sum(dim=-1, keepdims=True))
+    length2 = tr.sqrt((modal2 ** 2).sum(dim=-1, keepdims=True))
+    modal1_sim = torch_cosine_similarity(modal1, modal1, length1, length1, eps)
+    modal2_sim = torch_cosine_similarity(modal2, modal2, length2, length2, eps)
+
+    # initialize mask
+    positive_mask = modal1.new_tensor(np.eye(batch_size)).repeat([2, 1]).bool()
+
+    # mine positive
+    eye_mask = modal1.new_tensor(np.eye(batch_size))
+    topk_idx_1 = tr.topk(modal1_sim - eye_mask, k=top_k).indices
+    topk_idx_2 = tr.topk(modal2_sim - eye_mask, k=top_k).indices
+
+    upper_row_idx = tr.arange(batch_size).unsqueeze(1)
+    positive_mask[upper_row_idx, topk_idx_2] = True
+    lower_row_idx = tr.arange(batch_size, 2 * batch_size).unsqueeze(1)
+    positive_mask[lower_row_idx, topk_idx_1] = True
+    negative_mask = ~positive_mask
+
+    # prune negative
+    prune_idx_1 = modal1_sim.mean(dim=0) > gamma_thres
+    prune_idx_2 = modal2_sim.mean(dim=0) > gamma_thres
+
+    negative_mask[tr.arange(batch_size).unsqueeze(1), prune_idx_2] = False
+    negative_mask[tr.arange(batch_size, 2 * batch_size).unsqueeze(1), prune_idx_1] = False
+
+    # calculate cross modal similarity
+    # tensor shape [batch, batch]
+    cross_sim = tr.exp(torch_cosine_similarity(modal1, modal2, length1, length2, eps) / temp)
+    # tensor shape [2batch, batch]
+    cross_sim = tr.cat([cross_sim, cross_sim.T], dim=0)
+
+    numerators = tr.sum(cross_sim * positive_mask, dim=1)
+    denominators = tr.sum(cross_sim * negative_mask, dim=1)
+
+    # add intra-modal negative pairs
+    intra_modal_sims = tr.exp(tr.cat([modal1_sim, modal2_sim], dim=0))
+    intra_negative_mask = ~modal1.new_tensor(np.eye(batch_size)).repeat([2, 1]).bool()
+    intra_negative_mask[upper_row_idx, topk_idx_1] = False
+    intra_negative_mask[lower_row_idx, topk_idx_2] = False
+    intra_negative_mask[upper_row_idx, prune_idx_1] = False
+    intra_negative_mask[lower_row_idx, prune_idx_2] = False
+
+    denominators += tr.sum(intra_modal_sims * intra_negative_mask, dim=1)
+
+    # add intra-modal positives
+    intra_positive_idx = modal1.new_tensor(np.zeros([2 * batch_size, batch_size])).bool()
+    intra_positive_idx[upper_row_idx, topk_idx_1] = True
+    intra_positive_idx[lower_row_idx, topk_idx_2] = True
+    numerators += tr.sum(intra_modal_sims * intra_positive_idx, dim=1)
+
+    loss = -tr.log((numerators / (numerators + denominators)))
+    loss = loss.mean()
+    return loss
+
+
 if __name__ == '__main__':
     features = {
         'acc': tr.rand([8, 15]),
         'gyro': tr.rand([8, 15]) * -1,
         'skeleton': tr.normal(mean=tr.zeros([8, 15]), std=tr.ones([8, 15])),
     }
-    features = tr.stack(list(features.values()))
-    # error = info_nce_loss(features['acc'], features['skeleton'])
+    # features = tr.stack(list(features.values()))
+    lo = cmkm(features['acc'], features['skeleton'], gamma_thres=0.7)
 
     print(f'CMC: {MultiviewNTXentLoss(main_modal_idx=None)(features)}')
     print(f'CMC with main modal: {MultiviewNTXentLoss(main_modal_idx=0)(features)}')
