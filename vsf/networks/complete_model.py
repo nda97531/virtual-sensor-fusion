@@ -103,8 +103,12 @@ class VsfModel(nn.Module):
                 default: don't use;
             cls_fusion_modals: list of fusion modals for classification; each item represents a fusion modal, and is a
                 combined string of fused modals, separated by "+". For example if we want to fuse waist and wrist,
-                skeleton and waist, we have ['waist+wrist', 'skeleton+waist']
-            ctr_fusion_modals: same as `cls_fusion_modals` but for contrastive learning
+                skeleton and waist, we have ['waist+wrist', 'skeleton+waist'];
+                REMEMBER that if you add a fusion modal for classification, the modal name will have a suffix '_cls;
+                For example: 'waist+wrist_cls'
+            ctr_fusion_modals: same as `cls_fusion_modals` but for contrastive learning;
+                REMEMBER that if you add a fusion modal for contrastive learning, the modal name will have a suffix '_ctr;
+                For example: 'waist+wrist_ctr'
         """
         super().__init__()
         self.backbones = backbones
@@ -147,7 +151,7 @@ class VsfModel(nn.Module):
         for comb_name, fused_modals in self.cls_fusion_modals.items():
             x_fus_cls = [
                 x_dict[modal][head_kwargs['cls_mask'][modal]]
-                for modal in fused_modals if head_kwargs['cls_mask'][modal].any()
+                for modal in fused_modals if (modal in head_kwargs['cls_mask'] and head_kwargs['cls_mask'][modal].any())
             ]
             if len(x_fus_cls):
                 x_dict[comb_name] = tr.cat(x_fus_cls, dim=1)
@@ -157,7 +161,7 @@ class VsfModel(nn.Module):
         for comb_name, fused_modals in self.ctr_fusion_modals.items():
             x_fus_contrast = [
                 x_dict[modal][head_kwargs['contrast_mask'][modal]]
-                for modal in fused_modals if head_kwargs['contrast_mask'][modal].any()
+                for modal in fused_modals if (modal in head_kwargs['contrast_mask'] and head_kwargs['contrast_mask'][modal].any())
             ]
             if len(x_fus_contrast):
                 x_dict[comb_name] = tr.cat(x_fus_contrast, dim=1)

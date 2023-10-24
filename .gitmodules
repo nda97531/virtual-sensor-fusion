@@ -1,6 +1,8 @@
 [submodule "my_py_utils"]
 	path = my_py_utils
 	url = git@github.com:nda97531/my_py_utils.git
+	branch=main
 [submodule "har_datasets"]
 	path = vahar_datasets_formatter
 	url = git@github.com:nda97531/vahar_datasets_formatter.git
+	branch=main

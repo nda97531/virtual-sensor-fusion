@@ -78,6 +78,7 @@ class EarlyStop(ModelCheckpoint):
         self.smaller_better = smaller_better
         self.epoch_without_improvements = 0
         self.current_best_result = float('inf') if smaller_better else -float('inf')
+        self.current_best_epoch = 0
         self.latest_results = [float('inf') if smaller_better else -float('inf')] * queue_length
 
     def on_epoch_end(self, epoch: int, model: tr.nn.Module, train_metric: float, valid_metric: float):
@@ -85,11 +86,12 @@ class EarlyStop(ModelCheckpoint):
 
         if self.is_better(new_result):
             self.current_best_result = new_result
+            self.current_best_epoch = epoch
             self.epoch_without_improvements = 0
         else:
             self.epoch_without_improvements += 1
 
         if self.epoch_without_improvements >= self.patience:
-            print(f"Model does not improve from {self.current_best_result}. Stopping")
+            print(f"Model does not improve from {self.current_best_result} at epoch {self.current_best_epoch}. Stopping")
             return CallbackAction.STOP_TRAINING
         return CallbackAction.NONE
