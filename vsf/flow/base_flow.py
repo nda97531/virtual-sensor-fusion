@@ -17,7 +17,8 @@ class BaseFlow(ABC):
                  device: str,
                  cls_loss_fn: Union[tr.nn.Module, callable] = AutoCrossEntropyLoss(),
                  callbacks: List[TorchCallback] = None,
-                 callback_criterion: str = 'loss'):
+                 callback_criterion: str = 'loss',
+                 name: str = ''):
         """
         Abstract base class for train/valid/test flow
 
@@ -28,7 +29,9 @@ class BaseFlow(ABC):
             cls_loss_fn: classification loss function
             callbacks: list of callback objects
             callback_criterion: criterion to run callback; for example: checkpoint with best 'loss' or 'f1-score', etc.
+            name: name of the experiment, this is only for printing log
         """
+        self.name = name
         self.model = model.to(device)
         self.optimizer = optimizer
         self.device = device
@@ -181,7 +184,7 @@ class BaseFlow(ABC):
                 'number of tasks in train_loader and valid_loader must be the same'
 
         for epoch in range(1, max_epochs + 1):
-            print(f"-----------------\nEpoch {epoch}/{max_epochs}")
+            print(f"-----------------\n{self.name} Epoch {epoch}/{max_epochs}")
 
             self.train_epoch(train_loader)
             if valid_loader is not None:

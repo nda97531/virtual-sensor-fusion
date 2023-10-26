@@ -157,7 +157,7 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    NUM_REPEAT = 3
+    NUM_REPEAT = 1
     MAX_EPOCH = 300
     MIN_EPOCH = 20
     LEARNING_RATE = 1e-3
@@ -183,20 +183,20 @@ if __name__ == '__main__':
     for _ in range(NUM_REPEAT):
         # create model
         backbone = tr.nn.ModuleDict({
-            'acc': ResNet1D(in_channels=3, base_filters=64, kernel_size=9, n_block=6, stride=4),
-            'gyro': ResNet1D(in_channels=3, base_filters=64, kernel_size=9, n_block=6, stride=4)
+            'acc': ResNet1D(in_channels=3, base_filters=128, kernel_size=9, n_block=6, stride=4),
+            'gyro': ResNet1D(in_channels=3, base_filters=128, kernel_size=9, n_block=6, stride=4)
         })
 
         num_cls = len(train_cls_dict[list(train_cls_dict.keys())[0]])
         head = VsfDistributor(
-            input_dims={'acc+gyro_ctr': 128, 'acc+gyro_cls': 128} | {modal: 128 for modal in backbone.keys()},  # affect contrast loss order
+            input_dims={'acc+gyro_ctr': 256, 'acc+gyro_cls': 256} | {modal: 256 for modal in backbone.keys()},  # affect contrast loss order
             num_classes={'acc': num_cls, 'gyro': num_cls, 'acc+gyro_cls': num_cls},  # affect class logit order
-            contrastive_loss_func=MultiviewNTXentLoss(cos_thres=0.9, temp=0.1),
+            contrastive_loss_func=MultiviewNTXentLoss(),
             cls_dropout=0.5
         )
         model = VsfModel(
             backbones=backbone, distributor_head=head,
-            connect_feature_dims={'acc+gyro_cls': [256, 128], 'acc+gyro_ctr': [256, 128]},
+            connect_feature_dims={'acc+gyro_cls': [512, 256], 'acc+gyro_ctr': [512, 256]},
             cls_fusion_modals=['acc+gyro'], ctr_fusion_modals=['acc+gyro']
         )
 
@@ -218,7 +218,8 @@ if __name__ == '__main__':
                 EarlyStop(EARLY_STOP_PATIENCE, smaller_better=False),
                 ReduceLROnPlateau(optimizer=optimizer, mode='max', patience=LR_SCHEDULER_PATIENCE, verbose=True)
             ],
-            callback_criterion='f1_acc+gyro_cls'
+            callback_criterion='f1_acc+gyro_cls',
+            name=args.name
         )
 
         # train and valid

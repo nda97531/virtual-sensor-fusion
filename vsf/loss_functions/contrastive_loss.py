@@ -57,29 +57,32 @@ def filtered_ntxent_loss(modal1: tr.Tensor, modal2: tr.Tensor, cos_thres: float 
     modal1_sim = torch_cosine_similarity(modal1, modal1, length1, length1, eps)
     modal2_sim = torch_cosine_similarity(modal2, modal2, length2, length2, eps)
 
+    loss = None
     # mask: False: too similar pairs; True: dissimilar pairs for infoNCE loss
-    batch_sim_mask = (modal1_sim <= cos_thres) | (modal2_sim <= cos_thres)
-    # must include diagonal because it's y_true
-    range_batch_size = range(len(cross_sim))
-    batch_sim_mask[range_batch_size, range_batch_size] = True
+    if cos_thres < 1:
+        batch_sim_mask = (modal1_sim <= cos_thres) | (modal2_sim <= cos_thres)
+        # must include diagonal because it's y_true
+        range_batch_size = range(len(cross_sim))
+        batch_sim_mask[range_batch_size, range_batch_size] = True
 
-    if not batch_sim_mask.all():
-        error = 0
-        count = 0
-        for i in range_batch_size:
-            # exclude too similar pairs
-            item_sim = cross_sim[i][batch_sim_mask[i]]
-            if len(item_sim) > 1:
-                item_label = i - (~batch_sim_mask[i, :i]).sum()
-                error += F.cross_entropy(item_sim, item_label)
-                count += 1
-        error = (error / count) if count else (cross_sim[0, 0] * 0)
-    else:
+        if not batch_sim_mask.all():
+            loss = 0
+            count = 0
+            for i in range_batch_size:
+                # exclude too similar pairs
+                item_sim = cross_sim[i][batch_sim_mask[i]]
+                if len(item_sim) > 1:
+                    item_label = i - (~batch_sim_mask[i, :i]).sum()
+                    loss += F.cross_entropy(item_sim, item_label)
+                    count += 1
+            loss = (loss / count) if count else (cross_sim[0, 0] * 0)
+
+    if loss is None:
         # create positive idx tensor on the same device as `sim`
         positive_pair_idx = cross_sim.new_tensor(range(cross_sim.shape[0]), dtype=tr.long)
-        error = F.cross_entropy(cross_sim, positive_pair_idx)
+        loss = F.cross_entropy(cross_sim, positive_pair_idx)
 
-    return error
+    return loss
 
 
 class ContrastiveLoss(nn.Module):

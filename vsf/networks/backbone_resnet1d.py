@@ -11,7 +11,7 @@ class MyConv1dPadSame(nn.Module):
     extend nn.Conv1d to support SAME padding
     """
 
-    def __init__(self, in_channels, out_channels, kernel_size, stride, groups=1):
+    def __init__(self, in_channels, out_channels, kernel_size, stride, groups=1, bias=True):
         super(MyConv1dPadSame, self).__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
@@ -23,7 +23,8 @@ class MyConv1dPadSame(nn.Module):
             out_channels=self.out_channels,
             kernel_size=self.kernel_size,
             stride=self.stride,
-            groups=self.groups)
+            groups=self.groups,
+            bias=bias)
 
     def forward(self, x):
         net = x
@@ -100,7 +101,8 @@ class BasicBlock(nn.Module):
             out_channels=out_channels,
             kernel_size=kernel_size,
             stride=self.stride,
-            groups=self.groups)
+            groups=self.groups,
+            bias=not use_bn)
 
         # the second conv
         self.bn2 = nn.BatchNorm1d(out_channels)

@@ -24,7 +24,7 @@ from vsf.data_generator.unlabelled_data_gen import UnlabelledFusionDataset
 from vsf.flow.torch_callbacks import ModelCheckpoint, EarlyStop
 from vsf.flow.vsf_flow import VsfE2eFlow
 from vsf.loss_functions.contrastive_loss import MultiviewNTXentLoss
-from vsf.networks.backbone_tcn import TCN
+from vsf.networks.backbone_resnet1d import ResNet1D
 from vsf.networks.complete_model import VsfModel
 from vsf.networks.vsf_distributor import VsfDistributor
 
@@ -208,40 +208,16 @@ if __name__ == '__main__':
     for _ in range(NUM_REPEAT):
         # create model
         backbone = tr.nn.ModuleDict({
-            'waist': TCN(
-                input_shape=train_unlabelled_dict['waist'].shape[1:],
-                how_flatten='spatial attention gap',
-                n_tcn_channels=(64,) * 5 + (128,) * 2,
-                tcn_drop_rate=0.5,
-                use_spatial_dropout=True,
-                conv_norm='batch',
-                attention_conv_norm=''
-            ),
-            'wrist': TCN(
-                input_shape=train_unlabelled_dict['wrist'].shape[1:],
-                how_flatten='spatial attention gap',
-                n_tcn_channels=(64,) * 5 + (128,) * 2,
-                tcn_drop_rate=0.5,
-                use_spatial_dropout=True,
-                conv_norm='batch',
-                attention_conv_norm=''
-            ),
-            'ske': TCN(
-                input_shape=train_unlabelled_dict['ske'].shape[1:],
-                how_flatten='spatial attention gap',
-                n_tcn_channels=(64,) * 4 + (128,) * 2,
-                tcn_drop_rate=0.5,
-                use_spatial_dropout=True,
-                conv_norm='batch',
-                attention_conv_norm=''
-            )
+            'waist': ResNet1D(in_channels=3, base_filters=128, kernel_size=9, n_block=6, stride=4),
+            'wrist': ResNet1D(in_channels=3, base_filters=128, kernel_size=9, n_block=6, stride=4),
+            'ske': ResNet1D(in_channels=30, base_filters=128, kernel_size=9, n_block=6, stride=4)
         })
 
         num_cls = len(train_cls_dict[list(train_cls_dict.keys())[0]])
         head = VsfDistributor(
-            input_dims={modal: 128 for modal in backbone.keys()},  # affect contrast loss order
+            input_dims={modal: 256 for modal in backbone.keys()},  # affect contrast loss order
             num_classes={'waist': num_cls, 'wrist': num_cls},  # affect class logit order
-            contrastive_loss_func=MultiviewNTXentLoss(cos_thres=0.9, temp=0.1),
+            contrastive_loss_func=MultiviewNTXentLoss(),
             cls_dropout=0.5
         )
         model = VsfModel(backbones=backbone, distributor_head=head)
@@ -264,7 +240,8 @@ if __name__ == '__main__':
                 EarlyStop(EARLY_STOP_PATIENCE, smaller_better=False),
                 ReduceLROnPlateau(optimizer=optimizer, mode='max', patience=LR_SCHEDULER_PATIENCE, verbose=True)
             ],
-            callback_criterion='f1_waist'
+            callback_criterion='f1_waist',
+            name=args.name
         )
 
         # train and valid

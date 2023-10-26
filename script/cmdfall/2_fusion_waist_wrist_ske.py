@@ -20,7 +20,7 @@ from vsf.data_generator.augmentation import Rotation3D
 from vsf.data_generator.classification_data_gen import FusionDataset, BalancedFusionDataset
 from vsf.flow.single_task_flow import SingleTaskFlow
 from vsf.flow.torch_callbacks import ModelCheckpoint, EarlyStop
-from vsf.networks.backbone_tcn import TCN
+from vsf.networks.backbone_resnet1d import ResNet1D
 from vsf.networks.classifier import BasicClassifier
 from vsf.networks.complete_model import FusionClsModel
 
@@ -143,41 +143,15 @@ if __name__ == '__main__':
     for _ in range(NUM_REPEAT):
         # create model
         backbone = tr.nn.ModuleDict({
-            'waist': TCN(
-                input_shape=train_dict['waist'][0].shape[1:],
-                how_flatten='spatial attention gap',
-                n_tcn_channels=(64,) * 5 + (128,) * 2,
-                tcn_drop_rate=0.5,
-                use_spatial_dropout=True,
-                conv_norm='batch',
-                attention_conv_norm=''
-            ),
-            'wrist': TCN(
-                input_shape=train_dict['wrist'][0].shape[1:],
-                how_flatten='spatial attention gap',
-                n_tcn_channels=(64,) * 5 + (128,) * 2,
-                tcn_drop_rate=0.5,
-                use_spatial_dropout=True,
-                conv_norm='batch',
-                attention_conv_norm=''
-            ),
-            'ske': TCN(
-                input_shape=train_dict['ske'][0].shape[1:],
-                how_flatten='spatial attention gap',
-                n_tcn_channels=(64,) * 4 + (128,) * 2,
-                tcn_drop_rate=0.5,
-                use_spatial_dropout=True,
-                conv_norm='batch',
-                attention_conv_norm=''
-            )
+            'waist': ResNet1D(in_channels=3, base_filters=128, kernel_size=9, n_block=6, stride=4),
+            'wrist': ResNet1D(in_channels=3, base_filters=128, kernel_size=9, n_block=6, stride=4),
+            'ske': ResNet1D(in_channels=30, base_filters=128, kernel_size=9, n_block=6, stride=4)
         })
         classifier = BasicClassifier(
-            n_features_in=384,
+            n_features_in=768,
             n_classes_out=len(train_dict[list(train_dict.keys())[0]])
         )
-        model = FusionClsModel(backbones=backbone,
-                               backbone_output_dims={k: 128 for k in backbone.keys()},
-                               classifier=classifier)
+        model = FusionClsModel(backbones=backbone, classifier=classifier)
 
         # create folder to save result
         save_folder = f'{args.output_folder}/{args.name}'

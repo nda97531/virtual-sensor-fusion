@@ -68,8 +68,10 @@ def load_class_data(parquet_dir: str, window_size_sec=4, step_size_sec=0.4) -> d
         step_size_sec=step_size_sec,
         modal_cols={
             CMDFallConst.MODAL_INERTIA: {
+                'waist+wrist': ['waist_acc_x(m/s^2)', 'waist_acc_y(m/s^2)', 'waist_acc_z(m/s^2)',
+                                'wrist_acc_x(m/s^2)', 'wrist_acc_y(m/s^2)', 'wrist_acc_z(m/s^2)'],
                 'waist': ['waist_acc_x(m/s^2)', 'waist_acc_y(m/s^2)', 'waist_acc_z(m/s^2)'],
-                'wrist': ['wrist_acc_x(m/s^2)', 'wrist_acc_y(m/s^2)', 'wrist_acc_z(m/s^2)']
+                'wrist': ['wrist_acc_x(m/s^2)', 'wrist_acc_y(m/s^2)', 'wrist_acc_z(m/s^2)'],
             },
             CMDFallConst.MODAL_SKELETON: {
                 'ske': [c.format(kinect_id=3) for c in CMDFallConst.SELECTED_SKELETON_COLS]
@@ -100,6 +102,7 @@ def load_class_data(parquet_dir: str, window_size_sec=4, step_size_sec=0.4) -> d
             # don't count 'unknown' class (class index is 0)
             if label_idx != 0:
                 idx = modal_dict['label'] == label_val
+                class_dict['waist+wrist'][label_idx - 1] = modal_dict['waist+wrist'][idx]
                 class_dict['waist'][label_idx - 1] = modal_dict['waist'][idx]
                 class_dict['wrist'][label_idx - 1] = modal_dict['wrist'][idx]
                 class_dict['ske'][label_idx - 1] = modal_dict['ske'][idx]
@@ -135,8 +138,10 @@ def load_unlabelled_data(parquet_dir: str, window_size_sec=4, step_size_sec=1) -
         step_size_sec=step_size_sec,
         modal_cols={
             CMDFallConst.MODAL_INERTIA: {
+                'waist+wrist': ['waist_acc_x(m/s^2)', 'waist_acc_y(m/s^2)', 'waist_acc_z(m/s^2)',
+                                'wrist_acc_x(m/s^2)', 'wrist_acc_y(m/s^2)', 'wrist_acc_z(m/s^2)'],
                 'waist': ['waist_acc_x(m/s^2)', 'waist_acc_y(m/s^2)', 'waist_acc_z(m/s^2)'],
-                'wrist': ['wrist_acc_x(m/s^2)', 'wrist_acc_y(m/s^2)', 'wrist_acc_z(m/s^2)']
+                'wrist': ['wrist_acc_x(m/s^2)', 'wrist_acc_y(m/s^2)', 'wrist_acc_z(m/s^2)'],
             },
             CMDFallConst.MODAL_SKELETON: {
                 'ske': [c.format(kinect_id=3) for c in CMDFallConst.SELECTED_SKELETON_COLS]
@@ -172,7 +177,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--device', '-d', default='cuda:0')
 
-    parser.add_argument('--name', '-n', default='exp_vsf',
+    parser.add_argument('--name', '-n', required=True,
                         help='name of the experiment to create a folder to save weights')
 
     parser.add_argument('--data-folder', '-data',
@@ -184,9 +189,9 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    NUM_REPEAT = 1
+    NUM_REPEAT = 3
     MAX_EPOCH = 300
-    MIN_EPOCH = 90
+    MIN_EPOCH = 40
     LEARNING_RATE = 1e-3
     WEIGHT_DECAY = 1e-5
     EARLY_STOP_PATIENCE = 30
@@ -211,6 +216,7 @@ if __name__ == '__main__':
     for _ in range(NUM_REPEAT):
         # create model
         backbone = tr.nn.ModuleDict({
+            'waist+wrist': ResNet1D(in_channels=6, base_filters=128, kernel_size=9, n_block=6, stride=4),
             'waist': ResNet1D(in_channels=3, base_filters=128, kernel_size=9, n_block=6, stride=4),
             'wrist': ResNet1D(in_channels=3, base_filters=128, kernel_size=9, n_block=6, stride=4),
             'ske': ResNet1D(in_channels=30, base_filters=128, kernel_size=9, n_block=6, stride=4)
@@ -219,7 +225,7 @@ if __name__ == '__main__':
         num_cls = len(train_cls_dict[list(train_cls_dict.keys())[0]])
         head = VsfDistributor(
             input_dims={modal: 256 for modal in backbone.keys()},  # affect contrast loss order
-            num_classes={'waist': num_cls, 'wrist': num_cls, 'ske': num_cls},  # affect class logit order
+            num_classes={key: num_cls for key in backbone.keys()},  # affect class logit order
             contrastive_loss_func=MultiviewNTXentLoss(),
             cls_dropout=0.5
         )
@@ -243,19 +249,20 @@ if __name__ == '__main__':
                 EarlyStop(EARLY_STOP_PATIENCE, smaller_better=False),
                 ReduceLROnPlateau(optimizer=optimizer, mode='max', patience=LR_SCHEDULER_PATIENCE, verbose=True)
             ],
-            callback_criterion='f1_waist',
-            name=args.name
+            callback_criterion='f1_waist+wrist'
         )
 
         # train and valid
         augmenter = {
+            'waist+wrist': Rotation3D(angle_range=30, separate_triaxial=True),
             'waist': Rotation3D(angle_range=30),
-            'wrist': Rotation3D(angle_range=30)
+            'wrist': Rotation3D(angle_range=30),
         }
         train_set_cls = BalancedFusionDataset(deepcopy(train_cls_dict), augmenters=augmenter)
         valid_set_cls = FusionDataset(deepcopy(valid_cls_dict))
 
         augmenter = {
+            'waist+wrist': Rotation3D(angle_range=180, separate_triaxial=True),
             'waist': Rotation3D(angle_range=180),
             'wrist': Rotation3D(angle_range=180),
             'ske': Rotation3D(angle_range=180, rot_axis=np.array([0, 0, 1]))

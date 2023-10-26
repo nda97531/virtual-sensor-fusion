@@ -43,18 +43,23 @@ class BasicClsModel(nn.Module):
 
 
 class FusionClsModel(nn.Module):
-    def __init__(self, backbones: nn.ModuleDict, backbone_output_dims: dict, classifier: nn.Module) -> None:
+    def __init__(self, backbones: nn.ModuleDict, classifier: nn.Module, backbone_output_dims: dict = None) -> None:
         """
         A feature-level fusion model that concatenates features of backbones before the classifier
 
         Args:
             backbones: a module dict of backbone models
-            backbone_output_dims: output channel dim of each backbone, this dict has the same keys as `backbones`
             classifier: classifier model
+            backbone_output_dims: output channel dim of each backbone, this dict has the same keys as `backbones`;
+                ONLY needed if you want an FC layer between backbone and classifier
         """
         super().__init__()
         self.backbones = backbones
         self.classifiers = classifier
+
+        if backbone_output_dims is None:
+            backbone_output_dims = {modal: None for modal in backbones.keys()}
+
         self.connect_fc = nn.ModuleDict({
             modal: nn.Linear(backbone_output_dims[modal], backbone_output_dims[modal])
             if backbone_output_dims[modal] else nn.Identity()
