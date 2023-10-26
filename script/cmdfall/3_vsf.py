@@ -184,7 +184,7 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    NUM_REPEAT = 1
+    NUM_REPEAT = 3
     MAX_EPOCH = 300
     MIN_EPOCH = 90
     LEARNING_RATE = 1e-3

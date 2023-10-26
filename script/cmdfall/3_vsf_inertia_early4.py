@@ -249,7 +249,8 @@ if __name__ == '__main__':
                 EarlyStop(EARLY_STOP_PATIENCE, smaller_better=False),
                 ReduceLROnPlateau(optimizer=optimizer, mode='max', patience=LR_SCHEDULER_PATIENCE, verbose=True)
             ],
-            callback_criterion='f1_waist+wrist'
+            callback_criterion='f1_waist+wrist',
+            name=args.name
         )
 
         # train and valid
