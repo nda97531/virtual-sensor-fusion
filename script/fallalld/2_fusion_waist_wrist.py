@@ -1,6 +1,6 @@
 """
-Single task: classification of all labels
-Sensor fusion: wrist + waist
+Sensor fusion: waist acc + wrist acc
+Only classification.
 """
 
 import itertools

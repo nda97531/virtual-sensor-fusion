@@ -1,7 +1,8 @@
 """
-Multi-task: classification of all labels (2 classes of FallAllD) +
-    VSF contrastive (all data of FallAllD)
-Sensors: waist, wrist
+Labeled sensors: waist acc, wrist acc
+Unlabeled sensors: waist acc, wrist acc, skeleton
+- Classification [waist], [wrist]
+- Contrast [waist], [wrist], [skeleton]
 """
 
 import itertools

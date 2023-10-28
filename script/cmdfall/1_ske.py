@@ -1,6 +1,6 @@
 """
-Single task: classification of all labels
 Single sensor: skeleton
+Only classification.
 """
 
 import itertools

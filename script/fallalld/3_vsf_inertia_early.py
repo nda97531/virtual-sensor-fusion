@@ -1,7 +1,8 @@
 """
-Multi-task: classification of all labels (2 classes of FallAllD) +
-    VSF contrastive (all data of FallAllD)
-Sensors: waist, wrist
+Labeled sensors: waist acc, wrist acc
+Unlabeled sensors: waist acc, wrist acc, skeleton
+- Classification [early fusion waist+wrist]
+- Contrast [early fusion waist+wrist], [skeleton]
 """
 
 import itertools
@@ -23,7 +24,7 @@ from vsf.data_generator.classification_data_gen import FusionDataset, BalancedFu
 from vsf.data_generator.unlabelled_data_gen import UnlabelledFusionDataset
 from vsf.flow.torch_callbacks import ModelCheckpoint, EarlyStop
 from vsf.flow.vsf_flow import VsfE2eFlow
-from vsf.loss_functions.contrastive_loss import MultiviewNTXentLoss
+from vsf.loss_functions import contrastive_loss
 from vsf.networks.backbone_resnet1d import ResNet1D
 from vsf.networks.complete_model import VsfModel
 from vsf.networks.vsf_distributor import VsfDistributor
@@ -179,7 +180,7 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    NUM_REPEAT = 1
+    NUM_REPEAT = 3
     MAX_EPOCH = 300
     MIN_EPOCH = 40
     LEARNING_RATE = 1e-3
@@ -215,7 +216,7 @@ if __name__ == '__main__':
         head = VsfDistributor(
             input_dims={modal: 256 for modal in backbone.keys()},  # affect contrast loss order
             num_classes={'acc': num_cls},  # affect class logit order
-            contrastive_loss_func=MultiviewNTXentLoss(),
+            contrastive_loss_func=contrastive_loss.MultiviewNTXentLoss(),
             cls_dropout=0.5
         )
         model = VsfModel(backbones=backbone, distributor_head=head)

@@ -1,6 +1,6 @@
 """
-Single task: classification of all labels
-Single sensor: waist accelerometer
+Single sensor: waist acc
+Only classification.
 """
 
 import itertools

@@ -134,12 +134,12 @@ class MultiviewNTXentLoss(ContrastiveLoss):
         """
         assert len(all_features) > 1, 'At least 2 modals are required for contrastive loss'
 
-        error = 0
+        loss = 0
         num_components = 0
         for modal1_idx, modal2_idx in itertools.combinations(range(len(all_features)), 2):
             if self.main_modal_idx is None:
-                error += filtered_ntxent_loss(all_features[modal1_idx], all_features[modal2_idx],
-                                              cos_thres=self.cos_thres, temp=self.temp, eps=self.eps)
+                loss += filtered_ntxent_loss(all_features[modal1_idx], all_features[modal2_idx],
+                                             cos_thres=self.cos_thres, temp=self.temp, eps=self.eps)
                 num_components += 1
 
             elif self.main_modal_idx in {modal1_idx, modal2_idx}:
@@ -150,12 +150,12 @@ class MultiviewNTXentLoss(ContrastiveLoss):
                         modal2_feat = modal2_feat.detach()
                     else:
                         modal1_feat = modal1_feat.detach()
-                error += filtered_ntxent_loss(modal1_feat, modal2_feat,
-                                              cos_thres=self.cos_thres, temp=self.temp, eps=self.eps)
+                loss += filtered_ntxent_loss(modal1_feat, modal2_feat,
+                                             cos_thres=self.cos_thres, temp=self.temp, eps=self.eps)
                 num_components += 1
 
-        error /= num_components
-        return error
+        loss /= num_components
+        return loss
 
 
 class CocoaLoss(ContrastiveLoss):
@@ -259,7 +259,7 @@ class Cocoa2Loss(ContrastiveLoss):
         return error
 
 
-def cmkm_loss(modal1: tr.Tensor, modal2: tr.Tensor, gamma_thres: float, top_k: int = 1,
+def cmkm_loss(modal1: tr.Tensor, modal2: tr.Tensor, gamma_thres: float = 0.7, top_k: int = 1,
               temp: float = 0.1, eps: float = 1e-6):
     """
     Calculate contrastive loss with cross-modal knowledge mining, but don't use another pre-trained model like the
@@ -344,7 +344,7 @@ if __name__ == '__main__':
         'skeleton': tr.normal(mean=tr.zeros([8, 15]), std=tr.ones([8, 15])),
     }
     # features = tr.stack(list(features.values()))
-    lo = cmkm(features['acc'], features['skeleton'], gamma_thres=0.7)
+    lo = cmkm_loss(features['acc'], features['skeleton'], gamma_thres=0.7)
 
     print(f'CMC: {MultiviewNTXentLoss(main_modal_idx=None)(features)}')
     print(f'CMC with main modal: {MultiviewNTXentLoss(main_modal_idx=0)(features)}')

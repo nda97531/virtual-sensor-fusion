@@ -1,7 +1,8 @@
 """
-Multi-task: classification of all labels (11 classes of UP-Fall) +
-    VSF contrastive (UP-Fall)
-Sensors: skeleton
+Labeled sensors: skeleton
+Unlabeled sensors: waist acc, wrist acc, skeleton
+- Classification [ske]
+- Contrast [waist], [wrist], [skeleton]
 """
 
 import itertools
@@ -128,7 +129,7 @@ def load_unlabelled_data(parquet_dir: str, window_size_sec=4, step_size_sec=1) -
         modal_cols={
             UPFallConst.MODAL_INERTIA: {
                 'waist': ['belt_acc_x(m/s^2)', 'belt_acc_y(m/s^2)', 'belt_acc_z(m/s^2)'],
-                # 'wrist': ['wrist_acc_x(m/s^2)', 'wrist_acc_y(m/s^2)', 'wrist_acc_z(m/s^2)'],
+                'wrist': ['wrist_acc_x(m/s^2)', 'wrist_acc_y(m/s^2)', 'wrist_acc_z(m/s^2)'],
             },
             UPFallConst.MODAL_SKELETON: {
                 'ske': list(itertools.chain.from_iterable(

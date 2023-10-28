@@ -1,8 +1,10 @@
 """
-Multi-task: classification of all labels +
-    VSF contrastive (all data of UCI-HAR)
-Sensors: acc, gyro
+Labeled sensors: acc, gyro
+Unlabeled sensors: acc, gyro
+- Classification [late fusion acc+gyro], [acc], [gyro]
+- Contrast [late fusion acc+gyro], [acc], [gyro]
 """
+
 import os
 from collections import defaultdict
 from copy import deepcopy

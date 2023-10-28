@@ -1,7 +1,8 @@
 """
-Multi-task: classification of all labels (11 classes of UP-Fall) +
-    VSF contrastive (all data of CMDFall, including unknown label)
-Sensors: waist and wrist accelerometer, skeleton
+Labeled sensors:  waist acc
+Unlabeled sensors: waist acc, wrist acc, skeleton
+- Classification [waist acc]
+- Contrast [waist], [wrist], [skeleton]
 """
 
 import itertools

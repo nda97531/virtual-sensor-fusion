@@ -1,6 +1,6 @@
 """
-Single task: classification of all labels
-Single sensor: wrist accelerometer
+Single sensor: wrist acc
+Only classification.
 """
 
 import itertools
