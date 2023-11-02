@@ -34,11 +34,7 @@ def load_class_data(root_dir: str) -> dict:
     Load all the UP-Fall dataset into a dataframe
 
     Args:
-        parquet_dir: path to processed parquet folder
-        window_size_sec: window size in second for sliding window
-        step_size_sec: step size in second for sliding window
-        min_step_size_sec: min step size in second for shifting window
-        max_short_window: number of window for each session of short activities
+        root_dir: path to raw UCI-HAR folder
 
     Returns:
         a 3-level dict:
@@ -97,9 +93,7 @@ def load_unlabelled_data(root_dir: str) -> dict:
     Load the UCIHAR dataset as unlabelled
 
     Args:
-        parquet_dir: path to processed parquet folder
-        window_size_sec: window size in second for sliding window
-        step_size_sec: step size in second for sliding window
+        root_dir: path to raw UCI-HAR folder
 
     Returns:
         a 2-level dict:
