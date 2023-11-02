@@ -15,7 +15,7 @@ from loguru import logger
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
 
-from vahar_datasets_formatter.vahar.datasets.fallalld_dataset import FallAllDNpyWindow, FallAllDConst
+from vahar_datasets_formatter.vahar.datasets.fallalld import FallAllDNpyWindow, FallAllDConst
 from vsf.data_generator.augmentation import Rotation3D
 from vsf.data_generator.classification_data_gen import BasicDataset, BalancedDataset
 from vsf.flow.single_task_flow import SingleTaskFlow

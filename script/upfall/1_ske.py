@@ -15,7 +15,7 @@ from loguru import logger
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
 
-from vahar_datasets_formatter.vahar.datasets.upfall_dataset import UPFallNpyWindow, UPFallConst
+from vahar_datasets_formatter.vahar.datasets.upfall import UPFallNpyWindow, UPFallConst
 from vsf.data_generator.augmentation import HorizontalFlip
 from vsf.data_generator.classification_data_gen import BasicDataset, BalancedDataset
 from vsf.flow.single_task_flow import SingleTaskFlow

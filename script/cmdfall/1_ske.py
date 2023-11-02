@@ -15,7 +15,7 @@ from loguru import logger
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
 
-from vahar_datasets_formatter.vahar.datasets.cmdfall_dataset import CMDFallNpyWindow, CMDFallConst
+from vahar_datasets_formatter.vahar.datasets.cmdfall import CMDFallNpyWindow, CMDFallConst
 from vsf.data_generator.classification_data_gen import BasicDataset, BalancedDataset
 from vsf.flow.single_task_flow import SingleTaskFlow
 from vsf.flow.torch_callbacks import ModelCheckpoint, EarlyStop

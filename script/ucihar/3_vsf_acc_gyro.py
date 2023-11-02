@@ -17,7 +17,7 @@ from loguru import logger
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
 
-from vahar_datasets_formatter.vahar.datasets.ucihar_dataset import UCIHARNpyWindow, UCIHARConst
+from vahar_datasets_formatter.vahar.datasets.ucihar import UCIHARNpyWindow, UCIHARConst
 from vsf.data_generator import augmentation
 from vsf.data_generator.classification_data_gen import FusionDataset, BalancedFusionDataset
 from vsf.data_generator.unlabelled_data_gen import UnlabelledFusionDataset
@@ -115,7 +115,6 @@ def load_unlabelled_data(root_dir: str) -> dict:
         }
     )
     df = ucihar.run()
-    list_sub_modal = list(ucihar.modal_cols.keys())
 
     # split TRAIN, TEST
     train_set_idx = df['subject'].str.contains('train')

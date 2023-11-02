@@ -43,28 +43,33 @@ class BasicClsModel(nn.Module):
 
 
 class FusionClsModel(nn.Module):
-    def __init__(self, backbones: nn.ModuleDict, classifier: nn.Module, backbone_output_dims: dict = None) -> None:
+    def __init__(self, backbones: nn.ModuleDict, classifier: nn.Module,
+                 connect_feature_dims: Union[list, dict] = {}, aggregate: str = 'concat') -> None:
         """
         A feature-level fusion model that concatenates features of backbones before the classifier
 
         Args:
             backbones: a module dict of backbone models
             classifier: classifier model
-            backbone_output_dims: output channel dim of each backbone, this dict has the same keys as `backbones`;
-                ONLY needed if you want an FC layer between backbone and classifier
+            connect_feature_dims: feature dimension before and after FC layer used between backbone and distributor
+                for each modal; this can be a list of 2 (applied for all modal),
+                or a dict with keys are modal names, values are lists of 2
+                default: don't use;
+            aggregate: method to fuse all input streams, supported values: [concat|add]
         """
         super().__init__()
         self.backbones = backbones
         self.classifiers = classifier
 
-        if backbone_output_dims is None:
-            backbone_output_dims = {modal: None for modal in backbones.keys()}
-
         self.connect_fc = nn.ModuleDict({
-            modal: nn.Linear(backbone_output_dims[modal], backbone_output_dims[modal])
-            if backbone_output_dims[modal] else nn.Identity()
-            for modal in backbones.keys()
-        })  # activation function is implemented in `forward` function
+            modal: nn.Sequential(nn.ReLU(), nn.Linear(in_feat, out_feat))
+            for modal, (in_feat, out_feat) in connect_feature_dims.items()
+        })
+
+        self.aggregate = {
+            'concat': lambda x: tr.cat(x, dim=1),
+            'add': sum
+        }[aggregate]
 
     def forward(self, x_dict: Dict[str, tr.Tensor], backbone_kwargs: dict = {}, classifier_kwargs: dict = {}):
         """
@@ -76,16 +81,17 @@ class FusionClsModel(nn.Module):
         Returns:
             output tensor
         """
-        x = tr.cat([
-            self.connect_fc[modal](
-                F.relu(
-                    self.backbones[modal](
-                        tr.permute(x_dict[modal], [0, 2, 1]), **backbone_kwargs)))
+        # backbone
+        x_dict = {
+            modal: self.backbones[modal](tr.permute(x_dict[modal], [0, 2, 1]), **backbone_kwargs)
             for modal in self.backbones.keys()
-        ], dim=1)
-
-        # relu between backbone and classifier
-        x = F.relu(x)
+        }
+        # connect FC
+        x = self.aggregate([
+            F.relu(self.connect_fc[modal](x_dict[modal])) if modal in self.connect_fc.keys()
+            else F.relu(x_dict[modal])
+            for modal in x_dict.keys()
+        ])
 
         # [batch, channel]
         x = self.classifiers(x, **classifier_kwargs)
@@ -95,14 +101,15 @@ class FusionClsModel(nn.Module):
 class VsfModel(nn.Module):
     def __init__(self, backbones: nn.ModuleDict, distributor_head: VsfDistributor,
                  connect_feature_dims: Union[list, dict] = {},
-                 cls_fusion_modals: list = (), ctr_fusion_modals: list = ()) -> None:
+                 cls_fusion_modals: list = (), ctr_fusion_modals: list = (),
+                 fusion_name_alias: dict = {}) -> None:
         """
         Combine backbones and heads, including classifier and contrastive loss head
 
         Args:
             backbones: a module dict of backbone models
             distributor_head: model head
-            connect_feature_dims: feature dimension of FC layers used between backbone and distributor;
+            connect_feature_dims: feature dimension before and after FC layer used between backbone and distributor for each modal;
                 this can be a list of 2 (applied for all modal),
                 or a dict with keys are modal names, values are lists of 2
                 default: don't use;
@@ -114,6 +121,8 @@ class VsfModel(nn.Module):
             ctr_fusion_modals: same as `cls_fusion_modals` but for contrastive learning;
                 REMEMBER that if you add a fusion modal for contrastive learning, the modal name will have a suffix '_ctr;
                 For example: 'waist+wrist_ctr'
+            fusion_name_alias: if you fuse many modalities and don't want the name too long, you can change it to something else;
+                example: {'waist+wrist+chest+ankle': 'wearables'}
         """
         super().__init__()
         self.backbones = backbones
@@ -128,8 +137,14 @@ class VsfModel(nn.Module):
             for modal, (in_feat, out_feat) in connect_feature_dims.items()
         })
 
-        self.cls_fusion_modals = {f'{fused_modals}_cls': fused_modals.split('+') for fused_modals in cls_fusion_modals}
-        self.ctr_fusion_modals = {f'{fused_modals}_ctr': fused_modals.split('+') for fused_modals in ctr_fusion_modals}
+        self.cls_fusion_modals = {
+            f'{fusion_name_alias.get(fused_modals, fused_modals)}_cls':
+            fused_modals.split('+') for fused_modals in cls_fusion_modals
+        }
+        self.ctr_fusion_modals = {
+            f'{fusion_name_alias.get(fused_modals, fused_modals)}_ctr':
+            fused_modals.split('+') for fused_modals in ctr_fusion_modals
+        }
 
     def forward(self, x_dict: Dict[str, tr.Tensor], backbone_kwargs: dict = {}, head_kwargs: dict = {}):
         """

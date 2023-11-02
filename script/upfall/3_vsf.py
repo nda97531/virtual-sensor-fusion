@@ -1,7 +1,7 @@
 """
-Labeled sensors: skeleton
+Labeled sensors: waist acc, wrist acc, skeleton
 Unlabeled sensors: waist acc, wrist acc, skeleton
-- Classification [ske]
+- Classification [waist], [wrist], [skeleton]
 - Contrast [waist], [wrist], [skeleton]
 """
 
@@ -18,7 +18,7 @@ from loguru import logger
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
 
-from vahar_datasets_formatter.vahar.datasets.upfall_dataset import UPFallNpyWindow, UPFallConst
+from vahar_datasets_formatter.vahar.datasets.upfall import UPFallNpyWindow, UPFallConst
 from vsf.data_generator.augmentation import Rotation3D, HorizontalFlip
 from vsf.data_generator.classification_data_gen import FusionDataset, BalancedFusionDataset
 from vsf.data_generator.unlabelled_data_gen import UnlabelledFusionDataset
@@ -68,6 +68,10 @@ def load_class_data(parquet_dir: str, window_size_sec=4, step_size_sec=2, min_st
         min_step_size_sec=min_step_size_sec,
         max_short_window=max_short_window,
         modal_cols={
+            UPFallConst.MODAL_INERTIA: {
+                'waist': ['belt_acc_x(m/s^2)', 'belt_acc_y(m/s^2)', 'belt_acc_z(m/s^2)'],
+                'wrist': ['wrist_acc_x(m/s^2)', 'wrist_acc_y(m/s^2)', 'wrist_acc_z(m/s^2)'],
+            },
             UPFallConst.MODAL_SKELETON: {
                 'ske': list(itertools.chain.from_iterable(
                     [f'x_{joint}', f'y_{joint}'] for joint in
@@ -95,6 +99,8 @@ def load_class_data(parquet_dir: str, window_size_sec=4, step_size_sec=2, min_st
         class_dict = defaultdict(dict)
         for label_idx, label_val in enumerate(label_list):
             idx = modal_dict['label'] == label_val
+            class_dict['waist'][label_idx] = modal_dict['waist'][idx]
+            class_dict['wrist'][label_idx] = modal_dict['wrist'][idx]
             class_dict['ske'][label_idx] = modal_dict['ske'][idx]
         class_dict = dict(class_dict)
 
@@ -218,7 +224,7 @@ if __name__ == '__main__':
         num_cls = len(train_cls_dict[list(train_cls_dict.keys())[0]])
         head = VsfDistributor(
             input_dims={modal: 256 for modal in backbone.keys()},  # affect contrast loss order
-            num_classes={'ske': num_cls},  # affect class logit order
+            num_classes={modal: num_cls for modal in backbone.keys()},  # affect class logit order
             contrastive_loss_func=MultiviewNTXentLoss(),
             cls_dropout=0.5
         )

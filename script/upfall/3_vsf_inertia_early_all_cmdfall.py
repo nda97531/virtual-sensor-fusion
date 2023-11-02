@@ -17,8 +17,8 @@ from loguru import logger
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.utils.data import DataLoader
 
-from vahar_datasets_formatter.vahar.datasets.cmdfall_dataset import CMDFallNpyWindow, CMDFallConst
-from vahar_datasets_formatter.vahar.datasets.upfall_dataset import UPFallNpyWindow, UPFallConst
+from vahar_datasets_formatter.vahar.datasets.cmdfall import CMDFallNpyWindow, CMDFallConst
+from vahar_datasets_formatter.vahar.datasets.upfall import UPFallNpyWindow, UPFallConst
 from vsf.data_generator import augmentation
 from vsf.data_generator.classification_data_gen import FusionDataset, BalancedFusionDataset
 from vsf.data_generator.unlabelled_data_gen import UnlabelledFusionDataset
