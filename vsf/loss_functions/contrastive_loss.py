@@ -31,57 +31,40 @@ def torch_cosine_similarity(tensor1: tr.Tensor, tensor2: tr.Tensor,
     return sim
 
 
-def filtered_ntxent_loss(modal1: tr.Tensor, modal2: tr.Tensor, cos_thres: float = 1,
-                         temp: float = 0.1, eps: float = 1e-6):
+def infonce_loss(view1: tr.Tensor, view2: tr.Tensor,
+                 temp: float = 0.1, eps: float = 1e-6, reduction: str = 'mean'):
     """
-    Filtered NT-Xent loss between 2 modalities
+    InfoNCE loss between 2 views. Every item in view1 matches the item at the same index in view2.
+    View2 can have more items than view1 (means more negative pairs).
 
     Args:
-        modal1: features of modal 1, tensor shape [batch, feature]
-        modal2: features of modal 2, tensor shape [batch, feature]
-        cos_thres: only include pairs with cosine similarity less than or equal to this threshold when
-            calculating loss
+        view1: features of view 1, tensor shape [batch, feature]
+        view2: features of view 2, tensor shape [batch, feature]
         temp: temperature param
         eps: small epsilon to avoid division by 0
+        reduction: Specifies the reduction to apply to the output:
+            ``'none'``: no reduction will be applied,
+            ``'mean'``: the sum of the output will be divided by the number of
+            elements in the output, ``'sum'``: the output will be summed.
 
     Returns:
         a pytorch float
     """
-    assert modal1.shape == modal2.shape
+    assert view1.shape == view2.shape
+    batch_size = len(view1)
+    n = 2 * batch_size
 
-    # cosine sim
-    length1 = tr.sqrt((modal1 ** 2).sum(dim=-1, keepdims=True))
-    length2 = tr.sqrt((modal2 ** 2).sum(dim=-1, keepdims=True))
-    # tensor shape [batch, batch]
-    cross_sim = torch_cosine_similarity(modal1, modal2, length1, length2, eps) / temp
-    modal1_sim = torch_cosine_similarity(modal1, modal1, length1, length1, eps)
-    modal2_sim = torch_cosine_similarity(modal2, modal2, length2, length2, eps)
+    views = tr.cat((view1, view2), dim=0)
+    sim = torch_cosine_similarity(views, views, eps=eps)
+    sim = sim[~tr.eye(n, dtype=bool)].reshape(n, n - 1) / temp
 
-    loss = None
-    # mask: False: too similar pairs; True: dissimilar pairs for infoNCE loss
-    if cos_thres < 1:
-        batch_sim_mask = (modal1_sim <= cos_thres) | (modal2_sim <= cos_thres)
-        # must include diagonal because it's y_true
-        range_batch_size = range(len(cross_sim))
-        batch_sim_mask[range_batch_size, range_batch_size] = True
+    positive_idx = tr.tensor(
+        list(range(batch_size - 1, n - 1)) + list(range(0, batch_size)),
+        dtype=tr.long,
+        device=sim.device
+    )
 
-        if not batch_sim_mask.all():
-            loss = 0
-            count = 0
-            for i in range_batch_size:
-                # exclude too similar pairs
-                item_sim = cross_sim[i][batch_sim_mask[i]]
-                if len(item_sim) > 1:
-                    item_label = i - (~batch_sim_mask[i, :i]).sum()
-                    loss += F.cross_entropy(item_sim, item_label)
-                    count += 1
-            loss = (loss / count) if count else (cross_sim[0, 0] * 0)
-
-    if loss is None:
-        # create positive idx tensor on the same device as `sim`
-        positive_pair_idx = cross_sim.new_tensor(range(cross_sim.shape[0]), dtype=tr.long)
-        loss = F.cross_entropy(cross_sim, positive_pair_idx)
-
+    loss = F.cross_entropy(sim, positive_idx, reduction=reduction)
     return loss
 
 
@@ -101,7 +84,7 @@ class ContrastiveLoss(nn.Module):
 
 class MultiviewNTXentLoss(ContrastiveLoss):
     def __init__(self, main_modal_idx: int = None, ignore_submodal: bool = False,
-                 cos_thres: float = 1, temp: float = 0.1, eps: float = 1e-6, *args, **kwargs):
+                 temp: float = 0.1, eps: float = 1e-6, *args, **kwargs):
         """
         CMC loss for multiple modals
 
@@ -111,15 +94,12 @@ class MultiviewNTXentLoss(ContrastiveLoss):
                 if provided, only calculate for pairs containing it
             ignore_submodal: only relevant if `main_modal_idx` is provided;
                 whether to detach sub-modals when optimising CMC loss
-            cos_thres: only include pairs with cosine similarity less than or equal to this threshold when
-                calculating infoNCE loss; If =1 (max cosine), don't use filter at all
             temp: temperature param
             eps: epsilon added to norm2 when calculating cosine similarity to avoid division by 0
         """
         super().__init__(*args, **kwargs)
         self.main_modal_idx = main_modal_idx
         self.temp = temp
-        self.cos_thres = cos_thres
         self.eps = eps
         # only ignore submodal if a main modal exists
         self.ignore_submodal = ignore_submodal and (main_modal_idx is not None)
@@ -138,8 +118,8 @@ class MultiviewNTXentLoss(ContrastiveLoss):
         num_components = 0
         for modal1_idx, modal2_idx in itertools.combinations(range(len(all_features)), 2):
             if self.main_modal_idx is None:
-                loss += filtered_ntxent_loss(all_features[modal1_idx], all_features[modal2_idx],
-                                             cos_thres=self.cos_thres, temp=self.temp, eps=self.eps)
+                loss += infonce_loss(all_features[modal1_idx], all_features[modal2_idx],
+                                     temp=self.temp, eps=self.eps)
                 num_components += 1
 
             elif self.main_modal_idx in {modal1_idx, modal2_idx}:
@@ -150,8 +130,8 @@ class MultiviewNTXentLoss(ContrastiveLoss):
                         modal2_feat = modal2_feat.detach()
                     else:
                         modal1_feat = modal1_feat.detach()
-                loss += filtered_ntxent_loss(modal1_feat, modal2_feat,
-                                             cos_thres=self.cos_thres, temp=self.temp, eps=self.eps)
+                loss += infonce_loss(modal1_feat, modal2_feat,
+                                     temp=self.temp, eps=self.eps)
                 num_components += 1
 
         loss /= num_components
