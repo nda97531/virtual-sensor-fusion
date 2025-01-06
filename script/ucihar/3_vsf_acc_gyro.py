@@ -23,7 +23,7 @@ from vsf.data_generator.classification_data_gen import FusionDataset, BalancedFu
 from vsf.data_generator.unlabelled_data_gen import UnlabelledFusionDataset
 from vsf.flow.torch_callbacks import ModelCheckpoint, EarlyStop
 from vsf.flow.vsf_flow import VsfE2eFlow
-from vsf.loss_functions.contrastive_loss import MultiviewNTXentLoss
+from vsf.loss_functions.contrastive_loss import MultiviewInfoNCELoss
 from vsf.networks.backbone_resnet1d import ResNet1D
 from vsf.networks.complete_model import VsfModel
 from vsf.networks.vsf_distributor import VsfDistributor
@@ -186,7 +186,7 @@ if __name__ == '__main__':
         head = VsfDistributor(
             input_dims={'acc+gyro_ctr': 256, 'acc+gyro_cls': 256} | {modal: 256 for modal in backbone.keys()},  # affect contrast loss order
             num_classes={'acc': num_cls, 'gyro': num_cls, 'acc+gyro_cls': num_cls},  # affect class logit order
-            contrastive_loss_func=MultiviewNTXentLoss(),
+            contrastive_loss_func=MultiviewInfoNCELoss(),
             cls_dropout=0.5
         )
         model = VsfModel(

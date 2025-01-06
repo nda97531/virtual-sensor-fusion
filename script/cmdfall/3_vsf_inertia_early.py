@@ -219,7 +219,7 @@ if __name__ == '__main__':
         head = VsfDistributor(
             input_dims={modal: 256 for modal in backbone.keys()},  # affect contrast loss order
             num_classes={'acc': num_cls, 'ske': num_cls},  # affect class logit order
-            contrastive_loss_func=contrastive_loss.MultiviewNTXentLoss(),
+            contrastive_loss_func=contrastive_loss.MultiviewInfoNCELoss(),
             cls_dropout=0.5
         )
         model = VsfModel(backbones=backbone, distributor_head=head)

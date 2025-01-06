@@ -82,7 +82,7 @@ class ContrastiveLoss(nn.Module):
         raise NotImplementedError()
 
 
-class MultiviewNTXentLoss(ContrastiveLoss):
+class MultiviewInfoNCELoss(ContrastiveLoss):
     def __init__(self, main_modal_idx: int = None, ignore_submodal: bool = False,
                  temp: float = 0.1, eps: float = 1e-6, *args, **kwargs):
         """
@@ -326,7 +326,7 @@ if __name__ == '__main__':
     # features = tr.stack(list(features.values()))
     lo = cmkm_loss(features['acc'], features['skeleton'], gamma_thres=0.7)
 
-    print(f'CMC: {MultiviewNTXentLoss(main_modal_idx=None)(features)}')
-    print(f'CMC with main modal: {MultiviewNTXentLoss(main_modal_idx=0)(features)}')
+    print(f'CMC: {MultiviewInfoNCELoss(main_modal_idx=None)(features)}')
+    print(f'CMC with main modal: {MultiviewInfoNCELoss(main_modal_idx=0)(features)}')
     print(f'COCOA: {CocoaLoss()(features)}')
     print(f'COCOA2: {Cocoa2Loss()(features)}')

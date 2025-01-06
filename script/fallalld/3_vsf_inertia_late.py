@@ -218,7 +218,7 @@ if __name__ == '__main__':
         head = VsfDistributor(
             input_dims={'waist+wrist_cls': 256, 'waist+wrist_ctr': 256} | {modal: 256 for modal in backbone.keys()},  # affect contrast loss order
             num_classes={'waist+wrist_cls': num_cls, 'waist': num_cls, 'wrist': num_cls},  # affect class logit order
-            contrastive_loss_func=contrastive_loss.MultiviewNTXentLoss(),
+            contrastive_loss_func=contrastive_loss.MultiviewInfoNCELoss(),
             cls_dropout=0.5
         )
         model = VsfModel(
